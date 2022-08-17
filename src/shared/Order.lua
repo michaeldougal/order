@@ -35,19 +35,32 @@ local function replaceTempModule(moduleName, moduleData)
 	end
 end
 
+local function load(module: ModuleScript)
+	local moduleData
+	local success, message = pcall(function()
+		moduleData = require(module)
+	end)
+	if not success then
+		warn("Failed to load module", module.Name, "-", message)
+	elseif Order.DebugMode then
+		print("Loaded module", module.Name, moduleData)
+	end
+	return moduleData
+end
+
 function Order.__call(_: {}, module: string | ModuleScript)
 	if Order.DebugMode then
 		print("Request to load", module)
 	end
 
 	if typeof(module) == "Instance" then
-		return require(module)
+		return load(module)
 	end
 
 	if not LoadedModules[module] then
 		if Modules[module] and not ModulesLoading[module] then
 			ModulesLoading[module] = true
-			local moduleData = require(Modules[module])
+			local moduleData = load(Modules[module])
 			if LoadedModules[module] then -- Found temporary placeholder due to cyclic dependency
 				replaceTempModule(module, moduleData)
 			else
@@ -107,11 +120,22 @@ function Order.LoadTasks(location: Folder)
 end
 
 function Order.InitializeTasks()
-	for _, module: {} in pairs(LoadedModules) do
+	local tasksInitializing = 0
+	for moduleName: string, module: any in pairs(LoadedModules) do
 		if typeof(module) == "table" and module.Init then
-			module:Init()
+			tasksInitializing += 1
+			task.spawn(function()
+				local success, message = pcall(function()
+					module:Init()
+				end)
+				if not success then
+					warn("Failed to initialize module", moduleName, "-", message)
+				end
+				tasksInitializing -= 1
+			end)
 		end
 	end
+	while tasksInitializing > 0 do task.wait() end
 end
 
 setmetatable(shared, Order)
