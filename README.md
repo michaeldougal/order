@@ -1,4 +1,4 @@
-![order.](images/title.png)
+![order.](images/banner.png)
 A module loader framework created by [@ChiefWildin](https://www.roblox.com/users/1924093/profile)
 
 ## Getting Started
