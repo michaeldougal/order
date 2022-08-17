@@ -1,13 +1,9 @@
 local Filler = {}
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local require = require(ReplicatedStorage:WaitForChild("Common"):WaitForChild("Forklift")).require
-
-local Alpha = require("Alpha")
-local Omega = require("Omega")
-local Beta = require("Beta")
-local Subtask = require("Subtask")
+local Alpha = shared("Alpha")
+local Omega = shared("Omega")
+local Beta = shared("Beta")
+local Subtask = shared("Subtask")
 
 function Filler:Test()
 	print("Filler test successful")

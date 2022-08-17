@@ -1,15 +1,15 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local Forklift = require(ReplicatedStorage:WaitForChild("Common"):WaitForChild("Forklift"))
+local Order = require(ReplicatedStorage:WaitForChild("Common"):WaitForChild("Order"))
 
 local LocalContext = Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
 local SharedContext = ReplicatedStorage:WaitForChild("Common")
 
-Forklift.IndexModulesOf(LocalContext)
-Forklift.IndexModulesOf(SharedContext)
+Order.IndexModulesOf(LocalContext)
+Order.IndexModulesOf(SharedContext)
 
-Forklift.LoadTasks(LocalContext:WaitForChild("tasks"))
-Forklift.LoadTasks(SharedContext:WaitForChild("tasks"))
+Order.LoadTasks(LocalContext:WaitForChild("tasks"))
+Order.LoadTasks(SharedContext:WaitForChild("tasks"))
 
-Forklift.InitializeTasks()
+Order.InitializeTasks()

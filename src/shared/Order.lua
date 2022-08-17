@@ -1,16 +1,16 @@
 local standardPrint = print
 function print(...)
-	standardPrint("[Forklift]", ...)
+	standardPrint("[Order]", ...)
 end
 
 local standardWarn = warn
 function warn(...)
-	standardWarn("[Forklift]", ...)
+	standardWarn("[Order]", ...)
 end
 
 print("Framework intializing...")
 
-local Forklift = {
+local Order = {
 	IndexSubmodules = true, -- Whether or not to discover submodules for requiring by name
 	DebugMode = false -- Verbose loading in the output window
 }
@@ -21,18 +21,22 @@ local ModulesLoading = {}
 
 local function replaceTempModule(moduleName, moduleData)
 	LoadedModules[moduleName].IsFakeModule = nil
-	setmetatable(LoadedModules[moduleName], {
-		__index = function(_, requestedKey)
-			return moduleData[requestedKey]
-		end,
-		__newindex = function(_, requestedKey, requestedValue)
-			moduleData[requestedKey] = requestedValue
-		end
-	})
+	if typeof(moduleData) == "table" then
+		setmetatable(LoadedModules[moduleName], {
+			__index = function(_, requestedKey)
+				return moduleData[requestedKey]
+			end,
+			__newindex = function(_, requestedKey, requestedValue)
+				moduleData[requestedKey] = requestedValue
+			end
+		})
+	else
+		LoadedModules[moduleName] = moduleData
+	end
 end
 
-function Forklift.require(module: string | ModuleScript)
-	if Forklift.DebugMode then
+function Order.__call(_: {}, module: string | ModuleScript)
+	if Order.DebugMode then
 		print("Request to load", module)
 	end
 
@@ -48,7 +52,7 @@ function Forklift.require(module: string | ModuleScript)
 				replaceTempModule(module, moduleData)
 			else
 				LoadedModules[module] = moduleData
-				if Forklift.DebugMode then
+				if Order.DebugMode then
 					print("Loaded", module)
 				end
 			end
@@ -58,7 +62,7 @@ function Forklift.require(module: string | ModuleScript)
 				return
 			end
 			LoadedModules[module] = {IsFakeModule = true}
-			if Forklift.DebugMode then
+			if Order.DebugMode then
 				print("Set", module, "to fake module")
 			end
 		end
@@ -67,8 +71,8 @@ function Forklift.require(module: string | ModuleScript)
 	return LoadedModules[module]
 end
 
-function Forklift.IndexModulesOf(location: Instance)
-	if Forklift.DebugMode then
+function Order.IndexModulesOf(location: Instance)
+	if Order.DebugMode then
 		print("Locating modules in", location:GetFullName())
 	end
 	local discoveredModuleCount = 0
@@ -80,36 +84,38 @@ function Forklift.IndexModulesOf(location: Instance)
 				continue
 			end
 			Modules[child.Name] = child
-			if Forklift.IndexSubmodules then
-				Forklift.IndexModulesOf(child)
+			if Order.IndexSubmodules then
+				Order.IndexModulesOf(child)
 			end
 		elseif child:IsA("Folder") then
-			Forklift.IndexModulesOf(child)
+			Order.IndexModulesOf(child)
 		end
 	end
-	if Forklift.DebugMode and discoveredModuleCount > 0 then
+	if Order.DebugMode and discoveredModuleCount > 0 then
 		print("Discovered", discoveredModuleCount, if discoveredModuleCount == 1 then "module" else "modules")
 	end
 end
 
-function Forklift.LoadTasks(location: Folder)
+function Order.LoadTasks(location: Folder)
 	for _, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
 		if child:IsA("ModuleScript") then
-			Forklift.require(child.Name)
+			shared(child.Name)
 		elseif child:IsA("Folder") then
-			Forklift.LoadTasks(child)
+			Order.LoadTasks(child)
 		end
 	end
 end
 
-function Forklift.InitializeTasks()
+function Order.InitializeTasks()
 	for _, module: {} in pairs(LoadedModules) do
-		if module.Init then
+		if typeof(module) == "table" and module.Init then
 			module:Init()
 		end
 	end
 end
 
-print("Framework initialized")
+setmetatable(shared, Order)
 
-return Forklift
+print("Framework initialized.")
+
+return Order

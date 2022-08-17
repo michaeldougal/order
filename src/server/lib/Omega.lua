@@ -1,12 +1,9 @@
 local Omega = {}
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local require = require(ReplicatedStorage:WaitForChild("Common"):WaitForChild("Forklift")).require
-
-local Alpha = require("Alpha")
-local Filler = require("Filler")
-local Beta = require("Beta")
+---@module Alpha
+local Alpha = shared("Alpha")
+local Filler = shared("Filler")
+local Beta = shared("Beta")
 
 function Omega:Test()
 	print("Omega test successful")

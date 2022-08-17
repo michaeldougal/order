@@ -1,13 +1,9 @@
 local Beta = {}
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local require = require(ReplicatedStorage:WaitForChild("Common"):WaitForChild("Forklift")).require
-
-local Alpha = require("Alpha")
-local Omega = require("Omega")
-local Filler = require("Filler")
-local Subtask = require(script:WaitForChild("Subtask"))
+local Alpha = shared("Alpha")
+local Omega = shared("Omega")
+local Filler = shared("Filler")
+local Subtask = shared(script:WaitForChild("Subtask"))
 
 function Beta:Test()
 	print("Beta test successful")
