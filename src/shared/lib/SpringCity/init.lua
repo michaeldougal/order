@@ -5,7 +5,8 @@
 
 	Description:
 		Dedicated to Larry. He is a good man that has no love for Tweentown. But
-		everybody needs a home. So I built a new city for him. SpringCity.
+		everybody needs a home. So I built a new city for him. SpringCity. He
+		doesn't like it yet. But we'll get there. Eventually.
 
 	Dependencies:
 		Server:
