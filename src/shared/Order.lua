@@ -1,3 +1,5 @@
+---@author ChiefWildin
+
 local standardPrint = print
 function print(...)
 	standardPrint("[Order]", ...)
@@ -11,15 +13,82 @@ end
 print("Framework intializing...")
 
 local Order = {
-	IndexSubmodules = true, -- Whether or not to discover submodules for requiring by name
 	DebugMode = false -- Verbose loading in the output window
 }
 
 local Modules = {}
 local LoadedModules = {}
 local ModulesLoading = {}
+local CurrentModuleLoading = "Unknown"
 
-local function replaceTempModule(moduleName, moduleData)
+local FAKE_MODULE_METATABLE = {
+	__index = function(self, key)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to read key '" .. key .. "'. Please revise.")
+		return nil
+	end,
+	__newindex = function(self, key, value)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to set key '" .. key .. "' to " .. tostring(value) .. ". Please revise.")
+		return nil
+	end,
+	__call = function(self, ...)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to call module. Please revise.")
+		return nil
+	end,
+	__concat = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to concatenate module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__unm = function(self)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to use unary operator on module. Please revise.")
+		return nil
+	end,
+	__add = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to add module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__sub = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to subtract module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__mul = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to multiply module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__div = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to divide module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__mod = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to modulo module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__pow = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to raise module to power of " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__tostring = function(self)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to convert module to string. Please revise.")
+		return nil
+	end,
+	__eq = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__lt = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__le = function(self, other)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
+		return nil
+	end,
+	__len = function(self)
+		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to get length of module. Please revise.")
+		return nil
+	end
+}
+
+local function replaceTempModule(moduleName: string, moduleData: any)
 	LoadedModules[moduleName].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
 		setmetatable(LoadedModules[moduleName], {
@@ -28,6 +97,13 @@ local function replaceTempModule(moduleName, moduleData)
 			end,
 			__newindex = function(_, requestedKey, requestedValue)
 				moduleData[requestedKey] = requestedValue
+			end,
+			__tostring = function(_)
+				local result = "\nModule " .. moduleName .. ":\n"
+				for key, value in pairs(moduleData) do
+					result = result .. "\t" .. tostring(key) .. ": " .. tostring(value) .. "\n"
+				end
+				return result
 			end
 		})
 	else
@@ -35,20 +111,58 @@ local function replaceTempModule(moduleName, moduleData)
 	end
 end
 
-local function load(module: ModuleScript)
+local function load(module: ModuleScript): any?
 	local moduleData
+	CurrentModuleLoading = module.Name
 	local success, message = pcall(function()
 		moduleData = require(module)
 	end)
 	if not success then
 		warn("Failed to load module", module.Name, "-", message)
-	elseif Order.DebugMode then
-		print("Loaded module", module.Name, moduleData)
 	end
+	CurrentModuleLoading = "Unknown"
 	return moduleData
 end
 
-function Order.__call(_: {}, module: string | ModuleScript)
+local function getAncestors(descendant: Instance): {Instance}
+	local ancestors = {}
+	local current = descendant.Parent
+	while current do
+		table.insert(ancestors, current)
+		current = current.Parent
+	end
+	return ancestors
+end
+
+local function indexNames(child: ModuleScript)
+	local function indexName(index: string)
+		if Modules[index] then
+			if Order.DebugMode then
+				warn("Duplicate module names found:", child, Modules[index])
+			end
+			local existing = Modules[index]
+			if typeof(existing) == "table" then
+				table.insert(existing, child)
+			else
+				Modules[index] = {existing, child}
+			end
+		else
+			Modules[index] = child
+		end
+	end
+	indexName(child.Name)
+	local ancestors = getAncestors(child)
+	local currentIndex = child.Name
+	for _: number, ancestor: Instance in pairs(ancestors) do
+		currentIndex = ancestor.Name .. "/" .. currentIndex
+		indexName(currentIndex)
+		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Common" then
+			break
+		end
+	end
+end
+
+function Order.__call(_: {}, module: string | ModuleScript): {}
 	if Order.DebugMode then
 		print("Request to load", module)
 	end
@@ -59,6 +173,14 @@ function Order.__call(_: {}, module: string | ModuleScript)
 
 	if not LoadedModules[module] then
 		if Modules[module] and not ModulesLoading[module] then
+			if typeof(Modules[module]) == "table" then
+				warn("Multiple modules found for '" .. module .. "' - please be more specific:")
+				for _, duplicate in pairs(Modules[module]) do
+					local formattedName = string.gsub(duplicate:GetFullName(), "[.]", '/')
+					warn("    -", formattedName)
+				end
+				return
+			end
 			ModulesLoading[module] = true
 			local moduleData = load(Modules[module])
 			if LoadedModules[module] then -- Found temporary placeholder due to cyclic dependency
@@ -74,7 +196,12 @@ function Order.__call(_: {}, module: string | ModuleScript)
 				warn("Tried to require unknown module '" .. module .. "'")
 				return
 			end
-			LoadedModules[module] = {IsFakeModule = true}
+			local fakeModule = {
+				IsFakeModule = true,
+				Name = module
+			}
+			setmetatable(fakeModule, FAKE_MODULE_METATABLE)
+			LoadedModules[module] = fakeModule
 			if Order.DebugMode then
 				print("Set", module, "to fake module")
 			end
@@ -89,28 +216,19 @@ function Order.IndexModulesOf(location: Instance)
 		print("Locating modules in", location:GetFullName())
 	end
 	local discoveredModuleCount = 0
-	for _, child: Instance in ipairs(location:GetChildren()) do
+	for _: number, child: Instance in ipairs(location:GetDescendants()) do
 		if child:IsA("ModuleScript") and child ~= script then
 			discoveredModuleCount += 1
-			if Modules[child.Name] then
-				warn("Duplicate modules found:", child, Modules[child.Name])
-				continue
-			end
-			Modules[child.Name] = child
-			if Order.IndexSubmodules then
-				Order.IndexModulesOf(child)
-			end
-		elseif child:IsA("Folder") then
-			Order.IndexModulesOf(child)
+			indexNames(child)
 		end
 	end
 	if Order.DebugMode and discoveredModuleCount > 0 then
-		print("Discovered", discoveredModuleCount, if discoveredModuleCount == 1 then "module" else "modules")
+		print("Discovered", discoveredModuleCount, if discoveredModuleCount == 1 then "module" else "modules", "in", location:GetFullName())
 	end
 end
 
 function Order.LoadTasks(location: Folder)
-	for _, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
+	for _: number, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
 		if child:IsA("ModuleScript") then
 			shared(child.Name)
 		elseif child:IsA("Folder") then
@@ -120,6 +238,12 @@ function Order.LoadTasks(location: Folder)
 end
 
 function Order.InitializeTasks()
+	if Order.DebugMode then
+		print("Initializing tasks. Current known indices:")
+		for moduleIndex: string, _: ModuleScript | {} in pairs(Modules) do
+			print("    -", moduleIndex)
+		end
+	end
 	local tasksInitializing = 0
 	for moduleName: string, module: any in pairs(LoadedModules) do
 		if typeof(module) == "table" and module.Init then
