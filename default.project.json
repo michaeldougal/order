@@ -1,45 +1,45 @@
 {
-  "name": "New Order Project",
-  "tree": {
-    "$className": "DataModel",
+	"name": "New Order Project",
+	"tree": {
+		"$className": "DataModel",
 
-    "ReplicatedStorage": {
-		"$className": "ReplicatedStorage",
-		"Common": {
-			"$path": "src/shared",
-			"$ignoreUnknownInstances": true
-		}
-    },
-
-	"ReplicatedFirst": {
-		"$className": "ReplicatedFirst",
-		"$path": "src/first",
-		"$ignoreUnknownInstances": true
-	},
-
-    "ServerScriptService": {
-		"$className": "ServerScriptService",
-		"Server": {
-			"$path": "src/server",
-			"$ignoreUnknownInstances": true
-		}
-    },
-
-    "StarterPlayer": {
-		"$className": "StarterPlayer",
-		"$ignoreUnknownInstances": true,
-		"StarterPlayerScripts": {
-			"$className": "StarterPlayerScripts",
-			"Client": {
-				"$path": "src/client",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"Common": {
+				"$path": "src/shared",
 				"$ignoreUnknownInstances": true
+			}
 		},
-		"StarterCharacterScripts": {
-			"$className": "StarterCharacterScripts",
-			"$path": "src/character",
+
+		"ReplicatedFirst": {
+			"$className": "ReplicatedFirst",
+			"$path": "src/first",
 			"$ignoreUnknownInstances": true
+		},
+
+		"ServerScriptService": {
+			"$className": "ServerScriptService",
+			"Server": {
+				"$path": "src/server",
+				"$ignoreUnknownInstances": true
+			}
+		},
+
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"$ignoreUnknownInstances": true,
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"Client": {
+					"$path": "src/client",
+					"$ignoreUnknownInstances": true
+				}
+			},
+			"StarterCharacterScripts": {
+				"$className": "StarterCharacterScripts",
+				"$path": "src/character",
+				"$ignoreUnknownInstances": true
+			}
 		}
-		}
-    }
-  }
+	}
 }
