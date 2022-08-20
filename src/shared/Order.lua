@@ -10,11 +10,15 @@ function warn(...)
 	standardWarn("[Order]", ...)
 end
 
-print("Framework intializing...")
 
 local Order = {
-	DebugMode = false -- Verbose loading in the output window
+	DebugMode = false, -- Verbose loading in the output window
+	SilentMode = false -- Disables initialization output
 }
+
+if not Order.SilentMode then
+	print("Framework intializing...")
+end
 
 local Modules = {}
 local LoadedModules = {}
@@ -174,11 +178,15 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 	if not LoadedModules[module] then
 		if Modules[module] and not ModulesLoading[module] then
 			if typeof(Modules[module]) == "table" then
-				warn("Multiple modules found for '" .. module .. "' - please be more specific:")
-				for _, duplicate in pairs(Modules[module]) do
+				local trace = debug.traceback()
+				local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
+				local warning = trim .. ": Multiple modules found for '" .. module .. "' - please be more specific:\n"
+				local numDuplicates = #Modules[module]
+				for index, duplicate in ipairs(Modules[module]) do
 					local formattedName = string.gsub(duplicate:GetFullName(), "[.]", '/')
-					warn("    -", formattedName)
+					warning ..= "\t- " .. formattedName .. if index ~= numDuplicates then "\n" else ""
 				end
+				warn(warning)
 				return
 			end
 			ModulesLoading[module] = true
@@ -215,15 +223,15 @@ function Order.IndexModulesOf(location: Instance)
 	if Order.DebugMode then
 		print("Locating modules in", location:GetFullName())
 	end
-	local discoveredModuleCount = 0
+	local discovered = 0
 	for _: number, child: Instance in ipairs(location:GetDescendants()) do
 		if child:IsA("ModuleScript") and child ~= script then
-			discoveredModuleCount += 1
+			discovered += 1
 			indexNames(child)
 		end
 	end
-	if Order.DebugMode and discoveredModuleCount > 0 then
-		print("Discovered", discoveredModuleCount, if discoveredModuleCount == 1 then "module" else "modules", "in", location:GetFullName())
+	if Order.DebugMode and discovered > 0 then
+		print("Discovered", discovered, if discovered == 1 then "module" else "modules", "in", location:GetFullName())
 	end
 end
 
@@ -243,6 +251,8 @@ function Order.InitializeTasks()
 		for moduleIndex: string, _: ModuleScript | {} in pairs(Modules) do
 			print("    -", moduleIndex)
 		end
+	elseif not Order.SilentMode then
+		print("Initializing tasks...")
 	end
 	local tasksInitializing = 0
 	for moduleName: string, module: any in pairs(LoadedModules) do
@@ -259,11 +269,18 @@ function Order.InitializeTasks()
 			end)
 		end
 	end
+
 	while tasksInitializing > 0 do task.wait() end
+
+	if not Order.SilentMode then
+		print("All tasks initialized.")
+	end
 end
 
 setmetatable(shared, Order)
 
-print("Framework initialized.")
+if not Order.SilentMode then
+	print("Framework initialized.")
+end
 
 return Order
