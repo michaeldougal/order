@@ -23,7 +23,7 @@ end
 local Modules = {}
 local LoadedModules = {}
 local ModulesLoading = {}
-local TaskPriorityOrder = {}
+local Tasks = {}
 local TotalModules = 0
 local CurrentModuleLoading = "Unknown"
 
@@ -219,14 +219,6 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 		end
 	end
 
-	if LoadedModules[module] and not LoadedModules[module].IsFakeModule then
-		if LoadedModules[module].Priority then
-			table.insert(TaskPriorityOrder, LoadedModules[module].Priority, LoadedModules[module])
-		else
-			table.insert(TaskPriorityOrder, TotalModules, LoadedModules[module])
-		end
-	end
-
 	return LoadedModules[module]
 end
 
@@ -250,7 +242,7 @@ end
 function Order.LoadTasks(location: Folder)
 	for _: number, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
 		if child:IsA("ModuleScript") then
-			shared(child.Name)
+			table.insert(Tasks, shared(child.Name))
 		elseif child:IsA("Folder") then
 			Order.LoadTasks(child)
 		end
@@ -258,16 +250,23 @@ function Order.LoadTasks(location: Folder)
 end
 
 function Order.InitializeTasks()
+	table.sort(Tasks, function(a, b)
+		local aPriority = a.Priority or 0
+		local bPriority = b.Priority or 0
+		return aPriority > bPriority
+	end)
+
 	if Order.DebugMode then
-		print("Initializing tasks. Current known indices:")
-		for moduleIndex: string, _: ModuleScript | {} in pairs(Modules) do
-			print("    -", moduleIndex)
+		print("Initializing tasks. Current order:")
+		for index: number, moduleData: {} in pairs(Tasks) do
+			print("    " .. index .. ')', moduleData.Name)
 		end
 	elseif not Order.SilentMode then
 		print("Initializing tasks...")
 	end
+
 	local tasksInitializing = 0
-	for _: number, module: any in pairs(TaskPriorityOrder) do
+	for _: number, module: any in pairs(LoadedModules) do
 		if typeof(module) == "table" and module.Init then
 			tasksInitializing += 1
 			task.spawn(function()
@@ -276,6 +275,8 @@ function Order.InitializeTasks()
 				end)
 				if not success then
 					warn("Failed to initialize module", module.Name, "-", message)
+				elseif Order.DebugMode then
+					print("Initialized", module.Name)
 				end
 				tasksInitializing -= 1
 			end)
