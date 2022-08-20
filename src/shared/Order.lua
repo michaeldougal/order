@@ -13,8 +13,10 @@ end
 
 local Order = {
 	DebugMode = false, -- Verbose loading in the output window
-	SilentMode = false -- Disables initialization output
+	SilentMode = false -- Disables regular output
 }
+
+if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode active
 
 if not Order.SilentMode then
 	print("Framework intializing...")
