@@ -23,6 +23,8 @@ end
 local Modules = {}
 local LoadedModules = {}
 local ModulesLoading = {}
+local TaskPriorityOrder = {}
+local TotalModules = 0
 local CurrentModuleLoading = "Unknown"
 
 local FAKE_MODULE_METATABLE = {
@@ -120,6 +122,7 @@ local function load(module: ModuleScript): any?
 	CurrentModuleLoading = module.Name
 	local success, message = pcall(function()
 		moduleData = require(module)
+		moduleData.Name = module.Name
 	end)
 	if not success then
 		warn("Failed to load module", module.Name, "-", message)
@@ -216,6 +219,14 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 		end
 	end
 
+	if LoadedModules[module] and not LoadedModules[module].IsFakeModule then
+		if LoadedModules[module].Priority then
+			table.insert(TaskPriorityOrder, LoadedModules[module].Priority, LoadedModules[module])
+		else
+			table.insert(TaskPriorityOrder, TotalModules, LoadedModules[module])
+		end
+	end
+
 	return LoadedModules[module]
 end
 
@@ -227,6 +238,7 @@ function Order.IndexModulesOf(location: Instance)
 	for _: number, child: Instance in ipairs(location:GetDescendants()) do
 		if child:IsA("ModuleScript") and child ~= script then
 			discovered += 1
+			TotalModules += 1
 			indexNames(child)
 		end
 	end
@@ -255,7 +267,7 @@ function Order.InitializeTasks()
 		print("Initializing tasks...")
 	end
 	local tasksInitializing = 0
-	for moduleName: string, module: any in pairs(LoadedModules) do
+	for _: number, module: any in pairs(TaskPriorityOrder) do
 		if typeof(module) == "table" and module.Init then
 			tasksInitializing += 1
 			task.spawn(function()
@@ -263,7 +275,7 @@ function Order.InitializeTasks()
 					module:Init()
 				end)
 				if not success then
-					warn("Failed to initialize module", moduleName, "-", message)
+					warn("Failed to initialize module", module.Name, "-", message)
 				end
 				tasksInitializing -= 1
 			end)
