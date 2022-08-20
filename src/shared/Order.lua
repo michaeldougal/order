@@ -10,8 +10,8 @@ function warn(...)
 	standardWarn("[Order]", ...)
 end
 
-
 local Order = {
+	_VERSION = "0.3.2",
 	DebugMode = false, -- Verbose loading in the output window
 	SilentMode = false -- Disables regular output
 }
@@ -19,7 +19,8 @@ local Order = {
 if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode active
 
 if not Order.SilentMode then
-	print("Framework intializing...")
+	print("Framework initializing...")
+	print("Version: " .. Order._VERSION)
 end
 
 local Modules = {}
