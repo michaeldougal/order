@@ -11,9 +11,9 @@ function warn(...)
 end
 
 local Order = {
-	_VERSION = "0.3.2",
+	_VERSION = "0.3.3",
 	DebugMode = false, -- Verbose loading in the output window
-	SilentMode = false -- Disables regular output
+	SilentMode = not game:GetService("RunService"):IsStudio() -- Disables regular output
 }
 
 if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode active
@@ -147,9 +147,6 @@ end
 local function indexNames(child: ModuleScript)
 	local function indexName(index: string)
 		if Modules[index] then
-			if Order.DebugMode then
-				warn("Duplicate module names found:", child, Modules[index])
-			end
 			local existing = Modules[index]
 			if typeof(existing) == "table" then
 				table.insert(existing, child)
@@ -174,7 +171,7 @@ end
 
 function Order.__call(_: {}, module: string | ModuleScript): {}
 	if Order.DebugMode then
-		print("Request to load", module)
+		print("\tRequest to load", module)
 	end
 
 	if typeof(module) == "Instance" then
@@ -202,7 +199,7 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 			else
 				LoadedModules[module] = moduleData
 				if Order.DebugMode then
-					print("Loaded", module)
+					print("\tLoaded", module)
 				end
 			end
 		else
@@ -217,7 +214,7 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 			setmetatable(fakeModule, FAKE_MODULE_METATABLE)
 			LoadedModules[module] = fakeModule
 			if Order.DebugMode then
-				print("Set", module, "to fake module")
+				print("\tSet", module, "to fake module")
 			end
 		end
 	end
@@ -227,7 +224,7 @@ end
 
 function Order.IndexModulesOf(location: Instance)
 	if Order.DebugMode then
-		print("Locating modules in", location:GetFullName())
+		print("Indexing modules -", location:GetFullName())
 	end
 	local discovered = 0
 	for _: number, child: Instance in ipairs(location:GetDescendants()) do
@@ -238,21 +235,34 @@ function Order.IndexModulesOf(location: Instance)
 		end
 	end
 	if Order.DebugMode and discovered > 0 then
-		print("Discovered", discovered, if discovered == 1 then "module" else "modules", "in", location:GetFullName())
+		print("\tDiscovered", discovered, if discovered == 1 then "module" else "modules")
 	end
 end
 
 function Order.LoadTasks(location: Folder)
+	if Order.DebugMode then
+		print("Loading tasks -", location:GetFullName())
+	end
+	local tasksLoading = 0
 	for _: number, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
 		if child:IsA("ModuleScript") then
-			table.insert(Tasks, shared(child.Name))
+			tasksLoading += 1
+			task.spawn(function()
+				table.insert(Tasks, shared(child.Name))
+				tasksLoading -= 1
+			end)
 		elseif child:IsA("Folder") then
 			Order.LoadTasks(child)
 		end
 	end
+	while tasksLoading > 0 do task.wait() end
 end
 
 function Order.InitializeTasks()
+	if not Order.SilentMode then
+		print("Initializing tasks...")
+	end
+
 	table.sort(Tasks, function(a, b)
 		local aPriority = a.Priority or 0
 		local bPriority = b.Priority or 0
@@ -260,26 +270,24 @@ function Order.InitializeTasks()
 	end)
 
 	if Order.DebugMode then
-		print("Initializing tasks. Current order:")
+		print("\tCurrent initialization order:")
 		for index: number, moduleData: {} in pairs(Tasks) do
-			print("    " .. index .. ')', moduleData.Name)
+			print("\t\t" .. index .. ')', moduleData.Name)
 		end
-	elseif not Order.SilentMode then
-		print("Initializing tasks...")
 	end
 
 	local tasksInitializing = 0
-	for _: number, module: any in pairs(LoadedModules) do
-		if typeof(module) == "table" and module.Init then
+	for _: number, moduleData: {} in pairs(Tasks) do
+		if moduleData.Init then
 			tasksInitializing += 1
 			task.spawn(function()
 				local success, message = pcall(function()
-					module:Init()
+					moduleData:Init()
 				end)
 				if not success then
-					warn("Failed to initialize module", module.Name, "-", message)
+					warn("Failed to initialize module", moduleData.Name, "-", message)
 				elseif Order.DebugMode then
-					print("Initialized", module.Name)
+					print("\tInitialized", moduleData.Name)
 				end
 				tasksInitializing -= 1
 			end)
