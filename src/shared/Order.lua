@@ -11,7 +11,7 @@ function warn(...)
 end
 
 local Order = {
-	_VERSION = "0.3.3",
+	_VERSION = "0.3.4",
 	DebugMode = false, -- Verbose loading in the output window
 	SilentMode = not game:GetService("RunService"):IsStudio() -- Disables regular output
 }
@@ -123,12 +123,19 @@ end
 local function load(module: ModuleScript): any?
 	local moduleData
 	CurrentModuleLoading = module.Name
-	local success, message = pcall(function()
+	local loadSuccess, loadMessage = pcall(function()
 		moduleData = require(module)
-		moduleData.Name = module.Name
 	end)
-	if not success then
-		warn("Failed to load module", module.Name, "-", message)
+	local renameSuccess, renameMessage = pcall(function()
+		if typeof(moduleData) == "table" then
+			moduleData._OrderNameInternal = module.Name
+		end
+	end)
+	if not loadSuccess then
+		warn("Failed to load module", module.Name, "-", loadMessage)
+	end
+	if not renameSuccess then
+		warn("Failed to add internal name to module", module.Name, "-", renameMessage)
 	end
 	CurrentModuleLoading = "Unknown"
 	return moduleData
@@ -272,7 +279,7 @@ function Order.InitializeTasks()
 	if Order.DebugMode then
 		print("\tCurrent initialization order:")
 		for index: number, moduleData: {} in pairs(Tasks) do
-			print("\t\t" .. index .. ')', moduleData.Name)
+			print("\t\t" .. index .. ')', moduleData._OrderNameInternal)
 		end
 	end
 
@@ -285,9 +292,9 @@ function Order.InitializeTasks()
 					moduleData:Init()
 				end)
 				if not success then
-					warn("Failed to initialize module", moduleData.Name, "-", message)
+					warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
 				elseif Order.DebugMode then
-					print("\tInitialized", moduleData.Name)
+					print("\tInitialized", moduleData._OrderNameInternal)
 				end
 				tasksInitializing -= 1
 			end)
