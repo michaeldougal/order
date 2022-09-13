@@ -1,5 +1,30 @@
 ---@author ChiefWildin
 
+--[[
+
+	order.
+
+	A lightweight module loading framework for Roblox.
+	Documentation - https://michaeldougal.github.io/order/
+
+]]--
+
+
+-- Configuration
+
+
+local Order = {
+	_VERSION = "0.4.0",
+	DebugMode = false, -- Verbose loading in the output window
+	SilentMode = not game:GetService("RunService"):IsStudio() -- Disables regular output
+}
+
+if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode is active
+
+
+-- Output formatting
+
+
 local standardPrint = print
 function print(...)
 	standardPrint("[Order]", ...)
@@ -10,17 +35,13 @@ function warn(...)
 	standardWarn("[Order]", ...)
 end
 
-local Order = {
-	_VERSION = "0.3.4",
-	DebugMode = false, -- Verbose loading in the output window
-	SilentMode = not game:GetService("RunService"):IsStudio() -- Disables regular output
-}
 
-if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode active
+-- Initialization
+
 
 if not Order.SilentMode then
 	print("Framework initializing...")
-	print("Version: " .. Order._VERSION)
+	print("Version:", Order._VERSION)
 end
 
 local Modules = {}
@@ -28,75 +49,15 @@ local LoadedModules = {}
 local ModulesLoading = {}
 local Tasks = {}
 local TotalModules = 0
-local CurrentModuleLoading = "Unknown"
 
-local FAKE_MODULE_METATABLE = {
-	__index = function(self, key)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to read key '" .. key .. "'. Please revise.")
-		return nil
-	end,
-	__newindex = function(self, key, value)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to set key '" .. key .. "' to " .. tostring(value) .. ". Please revise.")
-		return nil
-	end,
-	__call = function(self, ...)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to call module. Please revise.")
-		return nil
-	end,
-	__concat = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to concatenate module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__unm = function(self)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to use unary operator on module. Please revise.")
-		return nil
-	end,
-	__add = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to add module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__sub = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to subtract module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__mul = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to multiply module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__div = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to divide module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__mod = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to modulo module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__pow = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to raise module to power of " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__tostring = function(self)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to convert module to string. Please revise.")
-		return nil
-	end,
-	__eq = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__lt = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__le = function(self, other)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to compare module with " .. tostring(other) .. ". Please revise.")
-		return nil
-	end,
-	__len = function(self)
-		warn("Detected bare code referencing a cyclic dependency (" .. CurrentModuleLoading .. " -> " .. tostring(self.Name) .. "). Attempt to get length of module. Please revise.")
-		return nil
-	end
-}
+local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 
+
+-- Private functions
+
+
+-- Adds a metatable to a temporary module table to let access operations fall
+-- through to the original module table.
 local function replaceTempModule(moduleName: string, moduleData: any)
 	LoadedModules[moduleName].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
@@ -120,9 +81,10 @@ local function replaceTempModule(moduleName: string, moduleData: any)
 	end
 end
 
+-- Loads the given ModuleScript with error handling. Returns the loaded data.
 local function load(module: ModuleScript): any?
 	local moduleData
-	CurrentModuleLoading = module.Name
+	shared._OrderCurrentModuleLoading = module.Name
 	local loadSuccess, loadMessage = pcall(function()
 		moduleData = require(module)
 	end)
@@ -137,10 +99,12 @@ local function load(module: ModuleScript): any?
 	if not renameSuccess then
 		warn("Failed to add internal name to module", module.Name, "-", renameMessage)
 	end
-	CurrentModuleLoading = "Unknown"
+	shared._OrderCurrentModuleLoading = nil
 	return moduleData
 end
 
+-- Returns a table of all of the provided Instance's ancestors in ascending
+-- order
 local function getAncestors(descendant: Instance): {Instance}
 	local ancestors = {}
 	local current = descendant.Parent
@@ -151,6 +115,7 @@ local function getAncestors(descendant: Instance): {Instance}
 	return ancestors
 end
 
+-- Adds all available aliases for a ModuleScript to the internal index registry
 local function indexNames(child: ModuleScript)
 	local function indexName(index: string)
 		if Modules[index] then
@@ -176,6 +141,12 @@ local function indexNames(child: ModuleScript)
 	end
 end
 
+
+-- Public functions
+
+
+-- Metatable override to load modules through the shared global table when
+-- calling the table as a function.
 function Order.__call(_: {}, module: string | ModuleScript): {}
 	if Order.DebugMode then
 		print("\tRequest to load", module)
@@ -211,14 +182,16 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 			end
 		else
 			if not Modules[module] then
-				warn("Tried to require unknown module '" .. module .. "'")
+				local trace = debug.traceback()
+				local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
+				warn(trim .. ": Attempt to require unknown module '" .. module .. "'")
 				return
 			end
 			local fakeModule = {
 				IsFakeModule = true,
 				Name = module
 			}
-			setmetatable(fakeModule, FAKE_MODULE_METATABLE)
+			setmetatable(fakeModule, CYCLE_METATABLE)
 			LoadedModules[module] = fakeModule
 			if Order.DebugMode then
 				print("\tSet", module, "to fake module")
@@ -229,6 +202,7 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 	return LoadedModules[module]
 end
 
+-- Indexes any ModuleScript children of the specified Instance
 function Order.IndexModulesOf(location: Instance)
 	if Order.DebugMode then
 		print("Indexing modules -", location:GetFullName())
@@ -246,6 +220,9 @@ function Order.IndexModulesOf(location: Instance)
 	end
 end
 
+-- Asynchronously loads all ModuleScript children of the specified task Folder,
+-- and queues them for initialization. Recursively loads all children of any
+-- discovered Folders as well.
 function Order.LoadTasks(location: Folder)
 	if Order.DebugMode then
 		print("Loading tasks -", location:GetFullName())
@@ -265,6 +242,8 @@ function Order.LoadTasks(location: Folder)
 	while tasksLoading > 0 do task.wait() end
 end
 
+-- Initializes all currently loaded tasks. Clears the task initialization queue
+-- after all tasks have been initialized.
 function Order.InitializeTasks()
 	if not Order.SilentMode then
 		print("Initializing tasks...")
@@ -303,10 +282,16 @@ function Order.InitializeTasks()
 
 	while tasksInitializing > 0 do task.wait() end
 
+	table.clear(Tasks)
+
 	if not Order.SilentMode then
 		print("All tasks initialized.")
 	end
 end
+
+
+-- Finalization
+
 
 setmetatable(shared, Order)
 
