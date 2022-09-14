@@ -55,8 +55,16 @@ local SpringCity = {}
 local Blueprint = require(script:WaitForChild("Spring"))
 
 -- Constants
-local ERROR_POLICY: "Warn" | "Error" = "Warn"
+local ERROR_POLICY: "Warn" | "Error" = "Error"
 local EPSILON = 1e-4
+local SUPPORTED_TYPES = {
+	number = true,
+	Vector2 = true,
+	Vector3 = true,
+	UDim2 = true,
+	UDim = true,
+	CFrame = true
+}
 
 -- Overloads
 local StdError = error
@@ -89,11 +97,25 @@ local function springAnimating(spring, epsilon)
 	local target = spring.Target
 
 	local animating
-	local targetType = typeof(target)
-	if targetType == "number" then
+	if spring.Type == "number" then
 		animating = math.abs(spring.Position - spring.Target) > epsilon or math.abs(spring.Velocity) > epsilon
-	elseif targetType == "Vector3" or targetType == "Vector2" then
+	elseif spring.Type == "Vector3" or spring.Type == "Vector2" then
 		animating = (spring.Position - spring.Target).Magnitude > epsilon or spring.Velocity.Magnitude > epsilon
+	elseif spring.Type == "UDim2" then
+		animating = math.abs(spring.Position.X.Scale - spring.Target.X.Scale) > epsilon or math.abs(spring.Velocity.X.Scale) > epsilon or
+			math.abs(spring.Position.X.Offset - spring.Target.X.Offset) > epsilon or math.abs(spring.Velocity.X.Offset) > epsilon or
+			math.abs(spring.Position.Y.Scale - spring.Target.Y.Scale) > epsilon or math.abs(spring.Velocity.Y.Scale) > epsilon or
+			math.abs(spring.Position.Y.Offset - spring.Target.Y.Offset) > epsilon or math.abs(spring.Velocity.Y.Offset) > epsilon
+	elseif spring.Type == "UDim" then
+		animating = math.abs(spring.Position.Scale - spring.Target.Scale) > epsilon or math.abs(spring.Velocity.Scale) > epsilon or
+			math.abs(spring.Position.Offset - spring.Target.Offset) > epsilon or math.abs(spring.Velocity.Offset) > epsilon
+	elseif spring.Type == "CFrame" then
+		local startAngleVector, startAngleRot = spring.Position:ToAxisAngle()
+		local velocityAngleVector, velocityAngleRot = spring.Velocity:ToAxisAngle()
+		local targetAngleVector, targetAngleRot = spring.Target:ToAxisAngle()
+		animating = (spring.Position.Position - spring.Target.Position).Magnitude > epsilon or spring.Velocity.Position.Magnitude > epsilon or
+			(startAngleVector - targetAngleVector).Magnitude > epsilon or velocityAngleVector.Magnitude > epsilon or
+			math.abs(startAngleRot - targetAngleRot) > epsilon or math.abs(velocityAngleRot) > epsilon
 	else
 		error("Unknown type")
 	end
@@ -200,7 +222,7 @@ function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties
 	local springChain
 	for property, impulse in pairs(properties) do
 		local impulseType = typeof(impulse)
-		if impulseType == "Vector3" or impulseType == "Vector2" or impulseType == "number" then
+		if SUPPORTED_TYPES[impulseType] then
 			springInfo.Initial = object[property]
 
 			if not Events[object] then
