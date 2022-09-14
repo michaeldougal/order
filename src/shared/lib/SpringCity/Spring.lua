@@ -52,8 +52,8 @@ export type Spring = {
 	Speed: number,
 	Clock: () -> number,
 	Type: string,
-	Impulse: (Spring, Springable) -> (),
-	TimeSkip: (Spring, number) -> (),
+	Impulse: (Spring, force: Springable) -> (),
+	TimeSkip: (Spring, delta: number) -> (),
 	_positionVelocity: (Spring, number) -> (Springable, Springable)
 }
 

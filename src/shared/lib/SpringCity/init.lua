@@ -78,15 +78,21 @@ end
 
 -- Classes and types
 type Arithmetic = number | Vector2 | Vector3
+type Spring = Blueprint.Spring
 
-export type Spring = {
-	Position: Arithmetic,
-	Velocity: number,
-	Target: Arithmetic,
-	Damper: number,
-	Speed: number,
-	TimeSkip: (Spring, deltaTime: number) -> (),
-	Impulse: (Spring, velocity: Arithmetic) -> (),
+export type SpringInfo = {
+	Position: Arithmetic?,
+	Velocity: number?,
+	Target: Arithmetic?,
+	Damper: number?,
+	Speed: number?,
+	Initial: Arithmetic?,
+	Clock: (() -> number)?,
+}
+
+export type SpringChain = {
+	_spring: Spring,
+	AndThen: (SpringChain, callback: () -> ()) -> SpringChain
 }
 
 -- Taken from Quenty's SpringUtils
@@ -127,21 +133,6 @@ local function springAnimating(spring, epsilon)
 		return false, target
 	end
 end
-
-export type SpringInfo = {
-	Position: Arithmetic?,
-	Velocity: number?,
-	Target: Arithmetic?,
-	Damper: number?,
-	Speed: number?,
-	Initial: Arithmetic?,
-	Clock: (() -> number)?,
-}
-
-export type SpringChain = {
-	_spring: Spring,
-	AndThen: (SpringChain, callback: () -> ()) -> SpringChain
-}
 
 local SpringChain: SpringChain = {}
 SpringChain.__index = SpringChain
