@@ -74,7 +74,8 @@ local SUPPORTED_TYPES = {
 	Vector3 = true,
 	UDim2 = true,
 	UDim = true,
-	CFrame = true
+	CFrame = true,
+	Color3 = true
 }
 local ZEROS = {
 	number = 0,
@@ -82,8 +83,13 @@ local ZEROS = {
 	Vector3 = Vector3.zero,
 	UDim2 = UDim2.new(),
 	UDim = UDim.new(),
-	CFrame = CFrame.identity
+	CFrame = CFrame.identity,
+	Color3 = Color3.new()
 }
+
+-- Aliases (for super speeeeeeeeed)
+local abs = math.abs
+local vector3 = Vector3.new
 
 -- Overloads
 local StdError = error
@@ -119,28 +125,34 @@ local function springAnimating(spring, epsilon)
 	epsilon = epsilon or EPSILON
 
 	local position = spring.Position
+	local velocity = spring.Velocity
 	local target = spring.Target
 
 	local animating
 	if spring.Type == "number" then
-		animating = math.abs(spring.Position - spring.Target) > epsilon or math.abs(spring.Velocity) > epsilon
+		animating = abs(position - target) > epsilon or abs(velocity) > epsilon
 	elseif spring.Type == "Vector3" or spring.Type == "Vector2" then
-		animating = (spring.Position - spring.Target).Magnitude > epsilon or spring.Velocity.Magnitude > epsilon
+		animating = (position - target).Magnitude > epsilon or velocity.Magnitude > epsilon
 	elseif spring.Type == "UDim2" then
-		animating = math.abs(spring.Position.X.Scale - spring.Target.X.Scale) > epsilon or math.abs(spring.Velocity.X.Scale) > epsilon or
-			math.abs(spring.Position.X.Offset - spring.Target.X.Offset) > epsilon or math.abs(spring.Velocity.X.Offset) > epsilon or
-			math.abs(spring.Position.Y.Scale - spring.Target.Y.Scale) > epsilon or math.abs(spring.Velocity.Y.Scale) > epsilon or
-			math.abs(spring.Position.Y.Offset - spring.Target.Y.Offset) > epsilon or math.abs(spring.Velocity.Y.Offset) > epsilon
+		animating = abs(position.X.Scale - target.X.Scale) > epsilon or abs(velocity.X.Scale) > epsilon or
+			abs(position.X.Offset - target.X.Offset) > epsilon or abs(velocity.X.Offset) > epsilon or
+			abs(position.Y.Scale - target.Y.Scale) > epsilon or abs(velocity.Y.Scale) > epsilon or
+			abs(position.Y.Offset - target.Y.Offset) > epsilon or abs(velocity.Y.Offset) > epsilon
 	elseif spring.Type == "UDim" then
-		animating = math.abs(spring.Position.Scale - spring.Target.Scale) > epsilon or math.abs(spring.Velocity.Scale) > epsilon or
-			math.abs(spring.Position.Offset - spring.Target.Offset) > epsilon or math.abs(spring.Velocity.Offset) > epsilon
+		animating = abs(position.Scale - target.Scale) > epsilon or abs(velocity.Scale) > epsilon or
+			abs(position.Offset - target.Offset) > epsilon or abs(velocity.Offset) > epsilon
 	elseif spring.Type == "CFrame" then
-		local startAngleVector, startAngleRot = spring.Position:ToAxisAngle()
-		local velocityAngleVector, velocityAngleRot = spring.Velocity:ToAxisAngle()
-		local targetAngleVector, targetAngleRot = spring.Target:ToAxisAngle()
-		animating = (spring.Position.Position - spring.Target.Position).Magnitude > epsilon or spring.Velocity.Position.Magnitude > epsilon or
+		local startAngleVector, startAngleRot = position:ToAxisAngle()
+		local velocityAngleVector, velocityAngleRot = velocity:ToAxisAngle()
+		local targetAngleVector, targetAngleRot = target:ToAxisAngle()
+		animating = (position.Position - target.Position).Magnitude > epsilon or velocity.Position.Magnitude > epsilon or
 			(startAngleVector - targetAngleVector).Magnitude > epsilon or velocityAngleVector.Magnitude > epsilon or
-			math.abs(startAngleRot - targetAngleRot) > epsilon or math.abs(velocityAngleRot) > epsilon
+			abs(startAngleRot - targetAngleRot) > epsilon or abs(velocityAngleRot) > epsilon
+	elseif spring.Type == "Color3" then
+		local startVector = vector3(position.R, position.G, position.B)
+		local velocityVector = vector3(velocity.R, velocity.G, velocity.B)
+		local targetVector = vector3(target.R, target.G, target.B)
+		animating = (startVector - targetVector).Magnitude > epsilon or velocityVector.Magnitude > epsilon
 	else
 		error("Unknown type")
 	end
@@ -198,15 +210,23 @@ local function updateSpringFromInfo(spring: Spring, springInfo: SpringInfo): Spr
 	end
 end
 
-local function cleanObjectSprings(object: Instance)
+local function animate(spring, object, property)
+	local animating, position = springAnimating(spring)
+	while animating do
+		object[property] = position
+		task.wait()
+		animating, position = springAnimating(spring)
+	end
 	if Events[object] then
-		for property, spring in pairs(Events[object]) do
-			while springAnimating(spring) do task.wait() end
-			if Events[object] then
-				Events[object][property] = nil
-			end
+		Events[object][property] = nil
+		local stillHasSprings = false
+		for _, _ in pairs(Events[object]) do
+			stillHasSprings = true
+			break
 		end
-		Events[object] = nil
+		if not stillHasSprings then
+			Events[object] = nil
+		end
 	end
 end
 
@@ -232,9 +252,11 @@ function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties
 	end
 
 	local springChain
+	local trackingPropertyForYield = false
 	for property, impulse in pairs(properties) do
 		local impulseType = typeof(impulse)
 		if SUPPORTED_TYPES[impulseType] then
+			local needsAnimationLink = true
 			springInfo.Initial = object[property]
 
 			if not Events[object] then
@@ -244,6 +266,7 @@ function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties
 				Events[object][property] = createSpringFromInfo(springInfo)
 			else
 				updateSpringFromInfo(Events[object][property], springInfo)
+				needsAnimationLink = false
 			end
 
 			local newSpring = Events[object][property]
@@ -253,19 +276,13 @@ function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties
 			end
 
 			newSpring:Impulse(impulse)
-			task.spawn(function()
-				local animating, position = springAnimating(newSpring)
-				while animating do
-					object[property] = position
-					task.wait()
-					animating, position = springAnimating(newSpring)
+			if needsAnimationLink then
+				if waitToKill and not trackingPropertyForYield and springChain then
+					trackingPropertyForYield = true
+					animate(newSpring, object, property)
+				else
+					task.spawn(animate, newSpring, object, property)
 				end
-			end)
-
-			if waitToKill and springChain then
-				cleanObjectSprings(object)
-			else
-				task.spawn(cleanObjectSprings, object)
 			end
 		else
 			error(string.format("Spring failure - invalid impulse type '%s' for property '%s'", impulseType, property))

@@ -2,11 +2,13 @@
 class Spring
 
 Description:
-	A physical model of a spring, useful in many applications. Properties only evaluate
-	upon index making this model good for lazy applications
+	A physical model of a spring, useful in many applications. Properties only
+	evaluate upon index making this model good for lazy applications. Originally
+	by Quenty, modified by TactBacon and ChiefWildin for additional type support
+	and to make it more readable.
 
 API:
-	Spring.new(position: Vector3 | Vector2 | number | UDim2 | UDim)
+	Spring.new(position: Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3)
 		Creates a new spring
 
 	Spring.Position
@@ -20,11 +22,11 @@ API:
 	Spring.Speed
 		Returns the speed
 
-	Spring.Target: Vector3 | Vector2 | number | UDim2 | UDim
+	Spring.Target: Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3
 		Sets the target
-	Spring.Position: Vector3 | Vector2 | number | UDim2 | UDim
+	Spring.Position: Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3
 		Sets the position
-	Spring.Velocity: Vector3 | Vector2 | number | UDim2 | UDim
+	Spring.Velocity: Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3
 		Sets the velocity
 	Spring.Damper = number [0, 1]
 		Sets the spring damper, defaults to 1
@@ -33,7 +35,7 @@ API:
 
 	Spring:TimeSkip(number DeltaTime)
 		Instantly skips the spring forwards by that amount of now
-	Spring:Impulse(velocity: Vector3 | Vector2 | number | UDim2 | UDim)
+	Spring:Impulse(velocity: Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3)
 		Impulses the spring, increasing velocity by the amount given
 
 Visualization (by Defaultio):
@@ -43,7 +45,7 @@ Visualization (by Defaultio):
 
 local Spring = {}
 
-type Springable = Vector3 | Vector2 | number | UDim2 | UDim | CFrame
+type Springable = Vector3 | Vector2 | number | UDim2 | UDim | CFrame | Color3
 export type Spring = {
 	Position: Springable,
 	Velocity: Springable,
@@ -65,11 +67,22 @@ local ZEROS = {
 	["UDim2"] = UDim2.new(),
 	["UDim"] = UDim.new(),
 	["CFrame"] = CFrame.identity,
+	["Color3"] = Color3.new(),
 }
 
-local function directConversion(a, b, sin, cosH, damperSin, speed, startPosition, startVelocity, targetPosition)
-	return a * startPosition + (1 - a) * targetPosition + (sin / speed) * startVelocity,
-		-b * startPosition + b * targetPosition + (cosH - damperSin) * startVelocity
+-- Aliases (for super speeeeeeeeed)
+local clamp = math.clamp
+local cos = math.cos
+local sin = math.sin
+local udim2 = UDim2.new
+local udim = UDim.new
+local color3 = Color3.new
+local cframe = CFrame.new
+local cframeFromAxis = CFrame.fromAxisAngle
+
+local function directConversion(a, b, sine, cosH, damperSin, speed, start, velocity, target)
+	return a * start + (1 - a) * target + (sine / speed) * velocity,
+		-b * start + b * target + (cosH - damperSin) * velocity
 end
 
 local Converters = {
@@ -81,50 +94,66 @@ local Converters = {
 		local d = sin / speed
 		local e = cosH - damperSin
 		return
-			UDim2.new(
+			udim2(
 				a * start.X.Scale + c * target.X.Scale + d * velocity.X.Scale,
 				a * start.X.Offset + c * target.X.Offset + d * velocity.X.Offset,
 				a * start.Y.Scale + c * target.Y.Scale + d * velocity.Y.Scale,
 				a * start.Y.Offset + c * target.Y.Offset + d * velocity.Y.Offset
 			),
-			UDim2.new(
+			udim2(
 				-b * start.X.Scale + b * target.X.Scale + e * velocity.X.Scale,
 				-b * start.X.Offset + b * target.X.Offset + e * velocity.X.Offset,
 				-b * start.Y.Scale + b * target.Y.Scale + e * velocity.Y.Scale,
 				-b * start.X.Offset + b * target.X.Offset + e * velocity.X.Offset
 			)
 	end,
-	["UDim"] = function(a, b, sin, cosH, damperSin, speed, start, velocity, target)
+	["UDim"] = function(a, b, sine, cosH, damperSin, speed, start, velocity, target)
 		local c = 1 - a
-		local d = sin / speed
+		local d = sine / speed
 		local e = cosH - damperSin
 		return
-			UDim.new(
+			udim(
 				a * start.Scale + c * target.Scale + d * velocity.Scale,
 				a * start.Offset + c * target.Offset + d * velocity.Offset
 			),
-			UDim.new(
+			udim(
 				-b * start.Scale + b * target.Scale + e * velocity.Scale,
 				-b * start.Offset + b * target.Offset + e * velocity.Offset
 			)
 	end,
-	["CFrame"] = function(a, b, sin, cosH, damperSin, speed, start: CFrame, velocity: CFrame, target: CFrame)
+	["CFrame"] = function(a, b, sine, cosH, damperSin, speed, start: CFrame, velocity: CFrame, target: CFrame)
 		local c = 1 - a
-		local d = sin / speed
+		local d = sine / speed
 		local e = cosH - damperSin
 		local startAngleVector, startAngleRot = start:ToAxisAngle()
 		local velocityAngleVector, velocityAngleRot = velocity:ToAxisAngle()
 		local targetAngleVector, targetAngleRot = target:ToAxisAngle()
 		return
-			CFrame.new(a * start.Position + c * target.Position + d * velocity.Position) *
-			CFrame.fromAxisAngle(
+			cframe(a * start.Position + c * target.Position + d * velocity.Position) *
+			cframeFromAxis(
 				a * startAngleVector + c * targetAngleVector + d * velocityAngleVector,
 				a * startAngleRot + c * targetAngleRot + d * velocityAngleRot
 			),
-			CFrame.new(-b * start.Position + b * target.Position + e * velocity.Position) *
-			CFrame.fromAxisAngle(
+			cframe(-b * start.Position + b * target.Position + e * velocity.Position) *
+			cframeFromAxis(
 				-b * startAngleVector + b * targetAngleVector + e * velocityAngleVector,
 				-b * startAngleRot + b * targetAngleRot + e * velocityAngleRot
+			)
+	end,
+	["Color3"] = function(a, b, sine, cosH, damperSin, speed, start: Color3, velocity: Color3, target: Color3)
+		local c = 1 - a
+		local d = sine / speed
+		local e = cosH - damperSin
+		return
+			color3(
+				clamp(a * start.R + c * target.R + d * velocity.R, 0, 1),
+				clamp(a * start.G + c * target.G + d * velocity.G, 0, 1),
+				clamp(a * start.B + c * target.B + d * velocity.B, 0, 1)
+			),
+			color3(
+				clamp(-b * start.R + b * target.R + e * velocity.R, 0, 1),
+				clamp(-b * start.G + b * target.G + e * velocity.G, 0, 1),
+				clamp(-b * start.B + b * target.B + e * velocity.B, 0, 1)
 			)
 	end
 }
@@ -141,6 +170,13 @@ local VelocityConverters = {
 	["UDim"] = directVelocity,
 	["CFrame"] = function(self, velocity)
 		self.Velocity *= velocity
+	end,
+	["Color3"] = function(self, velocity)
+		self.Velocity = color3(
+			self.Velocity.R + velocity.R,
+			self.Velocity.G + velocity.G,
+			self.Velocity.B + velocity.B
+		)
 	end
 }
 
@@ -251,32 +287,32 @@ function Spring:_positionVelocity(now)
 	local t = speed * (now - self._time0)
 	local damperSquared = damper * damper
 
-	local h, sin, cosine
+	local h, sine, cosine
 	if damperSquared < 1 then
 		h = (1 - damperSquared) ^ 0.5
 		local ep = EULER ^ ((-damper * t)) / h
-		cosine = ep * math.cos(h * t)
-		sin = ep * math.sin(h * t)
+		cosine = ep * cos(h * t)
+		sine = ep * sin(h * t)
 	elseif damperSquared == 1 then
 		h = 1
 		local ep = EULER ^ ((-damper * t)) / h
 		cosine = ep
-		sin = ep * t
+		sine = ep * t
 	else
 		h = (damperSquared - 1) ^ 0.5
 		local u = EULER ^ (((-damper + h) * t)) / (2 * h)
 		local v = EULER ^ (((-damper - h) * t)) / (2 * h)
 		cosine = u + v
-		sin = u - v
+		sine = u - v
 	end
 
 	local cosH = h * cosine
-	local damperSin = damper * sin
+	local damperSin = damper * sine
 
 	local a = cosH + damperSin
-	local b = speed * sin
+	local b = speed * sine
 
-	return Converters[self._type](a, b, sin, cosH, damperSin, speed, self._position0, self._velocity0, self._target)
+	return Converters[self._type](a, b, sine, cosH, damperSin, speed, self._position0, self._velocity0, self._target)
 end
 
 return Spring
