@@ -29,15 +29,15 @@
 					textButton.Text = "Hello"
 				end)
 
-		.Register(springName: string, springInfo: SpringInfo): Spring
+		::Register(springName: string, springInfo: SpringInfo): Spring
 			Registers a new spring in SpringCity. Returns the new spring created.
 
-		::Inquire(springName: string): Spring
+		::Get(springName: string): Spring
 			Returns the spring with the provided name. If it does not exist,
 			errors or warns based on policy and returns nil.
 
-		::Get(springName: string): Spring
-			Alias for :Inquire().
+		::Inquire(springName: string): Spring
+			Alias for :Get().
 
 		::Impulse(object: Instance, springInfo: SpringInfo, properties: {}, waitToKill: boolean?): SpringChain
 			Behaves like Tweentown:Tween(), using springs instead of tweens.
@@ -45,17 +45,28 @@
 			adjusted to match the new SpringInfo and reused.
 			Ex.
 				SpringCity:Impulse(textButton, {Speed = 30, Damper = 0.1}, {Rotation = 30})
+
+		::Target(object: Instance, springInfo: SpringInfo, properties: {}, waitToKill: boolean?)
+			Behaves like :Impulse(), but sets the spring target instead of
+			applying temporary force. If springs are already influencing the
+			provided object, they are adjusted to match the new SpringInfo and
+			reused.
+			Ex.
+				SpringCity:Target(textButton, {Speed = 30, Damper = 0.1}, {Rotation = 30})
 --]]
 
 -- Main job table
 local SpringCity = {}
+
+-- Services
+local RunService = game:GetService("RunService")
 
 -- Dependencies
 ---@module Spring
 local Blueprint = require(script:WaitForChild("Spring"))
 
 -- Constants
-local ERROR_POLICY: "Warn" | "Error" = "Error"
+local ERROR_POLICY: "Warn" | "Error" = if RunService:IsStudio() then "Error" else "Warn"
 local EPSILON = 1e-4
 local SUPPORTED_TYPES = {
 	number = true,
@@ -64,6 +75,14 @@ local SUPPORTED_TYPES = {
 	UDim2 = true,
 	UDim = true,
 	CFrame = true
+}
+local ZEROS = {
+	number = 0,
+	Vector2 = Vector2.zero,
+	Vector3 = Vector3.zero,
+	UDim2 = UDim2.new(),
+	UDim = UDim.new(),
+	CFrame = CFrame.identity
 }
 
 -- Overloads
@@ -183,20 +202,22 @@ local function cleanObjectSprings(object: Instance)
 	if Events[object] then
 		for property, spring in pairs(Events[object]) do
 			while springAnimating(spring) do task.wait() end
-			Events[object][property] = nil
+			if Events[object] then
+				Events[object][property] = nil
+			end
 		end
 		Events[object] = nil
 	end
 end
 
 -- Public functions
-function SpringCity.Register(springName: string, springInfo: SpringInfo): Spring
+function SpringCity:Register(springName: string, springInfo: SpringInfo): Spring
 	local newSpring = createSpringFromInfo(springInfo)
 	Directory[springName] = newSpring
 	return newSpring
 end
 
-function SpringCity:Inquire(springName: string): Spring?
+function SpringCity:Get(springName: string): Spring?
 	if Directory[springName] then
 		return Directory[springName]
 	else
@@ -204,7 +225,7 @@ function SpringCity:Inquire(springName: string): Spring?
 	end
 end
 
-function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties: {}, waitToKill: boolean?): SpringChain
+function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties: {[string]: any}, waitToKill: boolean?): SpringChain
 	if not object then
 		warn("Spring failure - invalid object passed\n" .. debug.traceback())
 		return SpringChain.new()
@@ -240,21 +261,35 @@ function SpringCity:Impulse(object: Instance, springInfo: SpringInfo, properties
 					animating, position = springAnimating(newSpring)
 				end
 			end)
+
+			if waitToKill and springChain then
+				cleanObjectSprings(object)
+			else
+				task.spawn(cleanObjectSprings, object)
+			end
 		else
 			error(string.format("Spring failure - invalid impulse type '%s' for property '%s'", impulseType, property))
 		end
 	end
 
-	if waitToKill and springChain then
-		cleanObjectSprings()
-	else
-		task.spawn(cleanObjectSprings)
-	end
-
 	return springChain :: SpringChain
 end
 
+function SpringCity:Target(object: Instance, springInfo: SpringInfo, properties: {[string]: any}, waitToKill: boolean?)
+	local yieldStarted = false
+	for property, target in pairs(properties) do
+		local targetType = typeof(target)
+		if not ZEROS[targetType] then
+			error("Spring failure - unsupported target type '" .. targetType .. "' passed\n" .. debug.traceback())
+			continue
+		end
+		springInfo.Target = target
+		SpringCity:Impulse(object, springInfo, {[property] = ZEROS[targetType]}, waitToKill and not yieldStarted)
+		yieldStarted = waitToKill
+	end
+end
+
 -- Aliases
-SpringCity.Get = SpringCity.Inquire
+SpringCity.Inquire = SpringCity.Get
 
 return SpringCity
