@@ -1,5 +1,5 @@
 ![order.](images/banner.png)
-A module loader framework created by [@ChiefWildin](https://www.roblox.com/users/1924093/profile)
+A module loader framework created by [@ChiefWildin](https://twitter.com/chiefwildin)
 
 ## Getting Started
-Check out [the documention](https://michaeldougal.github.io/order)!
+Welcome to the source files. Check out [the documention](https://michaeldougal.github.io/order)!
