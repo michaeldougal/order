@@ -216,15 +216,17 @@ function Tweentown:Tween(object: Instance, tweenInfo: TweenInfo, properties: {},
 	local normalCount = 0
 
 	for property, newValue in pairs(properties) do
-		local propertyType = typeof(object[property])
 		if isModel and property == "CFrame" then
 			alternativeTweenObject = tweenByPrimaryPart(object, tweenInfo, {CFrame = newValue})
 			properties[property] = nil
-		elseif propertyType == "ColorSequence" or propertyType == "NumberSequence" then
-			alternativeTweenObject = tweenSequence(object, property, tweenInfo, newValue)
-			properties[property] = nil
 		else
-			normalCount += 1
+			local propertyType = typeof(object[property])
+			if propertyType == "ColorSequence" or propertyType == "NumberSequence" then
+				alternativeTweenObject = tweenSequence(object, property, tweenInfo, newValue)
+				properties[property] = nil
+			else
+				normalCount += 1
+			end
 		end
 	end
 
