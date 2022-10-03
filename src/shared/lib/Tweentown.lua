@@ -37,8 +37,12 @@ local TweenService = game:GetService("TweenService")
 local Tweentown = {}
 
 -- Global Variables
-local TweentownBank = {}
-local ActiveWireTransfers: {[Instance]: {[string]: {[string]: NumberValue | Color3Value}}} = {}
+
+-- A dictionary that keeps track of the last tween played on each instance.
+local Directory: {[Instance]: Tween} = {}
+-- A dictionary that keeps track of the states of NumberSequence/ColorSequence
+-- values
+local ActiveSequences: {[Instance]: {[string]: {[string]: NumberValue | Color3Value}}} = {}
 
 -- Classes
 export type TweenChain = {
@@ -77,7 +81,12 @@ end
 local function murderTweenWhenDone(tween: Tween)
 	tween.Completed:Wait()
 	tween:Destroy()
-	TweentownBank[tween.Instance] = nil
+
+	-- Clean up if this was the last tween played on the instance, might not be
+	-- if another property was changed before this one finished.
+	if Directory[tween.Instance] == tween then
+		Directory[tween.Instance] = nil
+	end
 end
 
 local function tweenByPrimaryPart(object: Model, tweenInfo: TweenInfo, properties: {}, waitToKill: boolean?): TweenChain
@@ -89,9 +98,9 @@ local function tweenByPrimaryPart(object: Model, tweenInfo: TweenInfo, propertie
 		return TweenChain.new()
 	end
 
-	local fakeCenter = Instance.new("Part")
 	-- Keep setting by PrimaryPartCFrame if PrimaryPart exists, until :PivotTo()
 	-- is proven to be faster. My own testing has been inconclusive so far.
+	local fakeCenter = Instance.new("Part")
 	if object.PrimaryPart then
 		fakeCenter.CFrame = object.PrimaryPart.CFrame
 		fakeCenter:GetPropertyChangedSignal("CFrame"):Connect(function()
@@ -125,7 +134,7 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 
 	local function updateSequence()
 		local newKeypoints = table.create(numPoints)
-		for index, point in pairs(ActiveWireTransfers[object][sequenceName]) do
+		for index, point in pairs(ActiveSequences[object][sequenceName]) do
 			if sequenceType == "NumberSequence" then
 				newKeypoints[index] = NumberSequenceKeypoint.new(point.Time.Value, point.Value.Value, point.Envelope.Value)
 			else
@@ -135,11 +144,11 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 		object[sequenceName] = if sequenceType == "NumberSequence" then NumberSequence.new(newKeypoints) else ColorSequence.new(newKeypoints)
 	end
 
-	if not ActiveWireTransfers[object] then
-		ActiveWireTransfers[object] = {}
+	if not ActiveSequences[object] then
+		ActiveSequences[object] = {}
 	end
-	if not ActiveWireTransfers[object][sequenceName] then
-		ActiveWireTransfers[object][sequenceName] = table.create(numPoints)
+	if not ActiveSequences[object][sequenceName] then
+		ActiveSequences[object][sequenceName] = table.create(numPoints)
 
 		for index, keypoint in pairs(originalSequence.Keypoints) do
 			local point
@@ -165,12 +174,12 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 			point.Value:GetPropertyChangedSignal("Value"):Connect(updateSequence)
 			point.Time:GetPropertyChangedSignal("Value"):Connect(updateSequence)
 
-			ActiveWireTransfers[object][sequenceName][index] = point
+			ActiveSequences[object][sequenceName][index] = point
 		end
 	end
 
 	for index, _ in pairs(originalSequence.Keypoints) do
-		local point = ActiveWireTransfers[object][sequenceName][index]
+		local point = ActiveSequences[object][sequenceName][index]
 		local isLast = index == numPoints
 		local shouldWait = isLast and waitToKill
 		if sequenceType == "NumberSequence" then
@@ -179,7 +188,7 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 		Tweentown:Tween(point.Value, tweenInfo, {Value = newSequence.Keypoints[index].Value})
 		local tweenObject = Tweentown:Tween(point.Time, tweenInfo, {Value = newSequence.Keypoints[index].Time}, shouldWait):AndThen(function()
 			if index == numPoints then
-				for _, pointData in pairs(ActiveWireTransfers[object][sequenceName]) do
+				for _, pointData in pairs(ActiveSequences[object][sequenceName]) do
 					pointData.Value:Destroy()
 					pointData.Time:Destroy()
 					if sequenceType == "NumberSequence" then
@@ -187,15 +196,15 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 					end
 				end
 
-				ActiveWireTransfers[object][sequenceName] = nil
+				ActiveSequences[object][sequenceName] = nil
 
 				local remainingTweens = 0
-				for _, _ in pairs(ActiveWireTransfers[object]) do
+				for _, _ in pairs(ActiveSequences[object]) do
 					remainingTweens += 1
 					break
 				end
 				if remainingTweens == 0 then
-					ActiveWireTransfers[object] = nil
+					ActiveSequences[object] = nil
 				end
 
 				object[sequenceName] = newSequence
@@ -208,7 +217,7 @@ end
 
 -- Public functions
 function Tweentown:GetTweenFromInstance(object: Instance): Tween?
-	return TweentownBank[object]
+	return Directory[object]
 end
 
 function Tweentown:Tween(object: Instance, tweenInfo: TweenInfo, properties: {}, waitToKill: boolean?): TweenChain
@@ -250,7 +259,7 @@ function Tweentown:Tween(object: Instance, tweenInfo: TweenInfo, properties: {},
 	local tweenChain = TweenChain.new(thisTween)
 
 	thisTween:Play()
-	TweentownBank[object] = thisTween
+	Directory[object] = thisTween
 
 	if waitToKill then
 		murderTweenWhenDone(thisTween)
