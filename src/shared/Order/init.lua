@@ -14,12 +14,15 @@
 
 
 local Order = {
-	_VERSION = "0.4.0",
-	DebugMode = false, -- Verbose loading in the output window
-	SilentMode = not game:GetService("RunService"):IsStudio() -- Disables regular output
+	_VERSION = "0.5.0",
+	 -- Verbose loading in the output window
+	DebugMode = false,
+	-- Disables regular output
+	SilentMode = not game:GetService("RunService"):IsStudio()
 }
 
-if Order.SilentMode then Order.DebugMode = false end -- Override debug mode if silent mode is active
+-- Override debug mode if silent mode is active
+if Order.SilentMode then Order.DebugMode = false end
 
 
 -- Output formatting
@@ -145,8 +148,8 @@ end
 -- Public functions
 
 
--- Metatable override to load modules through the shared global table when
--- calling the table as a function.
+-- Metatable override to load modules when calling the Order table as a
+-- function.
 function Order.__call(_: {}, module: string | ModuleScript): {}
 	if Order.DebugMode then
 		print("\tRequest to load", module)
@@ -292,8 +295,10 @@ end
 
 -- Finalization
 
-
+-- Enables shared keyword to act as require
 setmetatable(shared, Order)
+-- Enables this module to act as require when required
+setmetatable(Order, Order)
 
 if not Order.SilentMode then
 	print("Framework initialized.")
