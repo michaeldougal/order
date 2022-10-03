@@ -81,7 +81,7 @@ local function murderTweenWhenDone(tween: Tween)
 end
 
 local function tweenByPrimaryPart(object: Model, tweenInfo: TweenInfo, properties: {}, waitToKill: boolean?): TweenChain
-	if not object or not object:IsA("Model") or not object.PrimaryPart then
+	if not object or not object:IsA("Model") then
 		warn("Tween by primary part failure - invalid object passed\n" .. debug.traceback())
 		if waitToKill then
 			task.wait(tweenInfo.Time)
@@ -90,10 +90,19 @@ local function tweenByPrimaryPart(object: Model, tweenInfo: TweenInfo, propertie
 	end
 
 	local fakeCenter = Instance.new("Part")
-	fakeCenter.CFrame = object.PrimaryPart.CFrame
-	fakeCenter:GetPropertyChangedSignal("CFrame"):Connect(function()
-		object:SetPrimaryPartCFrame(fakeCenter.CFrame)
-	end)
+	-- Keep setting by PrimaryPartCFrame if PrimaryPart exists, until :PivotTo()
+	-- is proven to be faster. My own testing has been inconclusive so far.
+	if object.PrimaryPart then
+		fakeCenter.CFrame = object.PrimaryPart.CFrame
+		fakeCenter:GetPropertyChangedSignal("CFrame"):Connect(function()
+			object:SetPrimaryPartCFrame(fakeCenter.CFrame)
+		end)
+	else
+		fakeCenter.CFrame = object:GetPivot()
+		fakeCenter:GetPropertyChangedSignal("CFrame"):Connect(function()
+			object:PivotTo(fakeCenter.CFrame)
+		end)
+	end
 
 	task.delay(tweenInfo.Time, function()
 		fakeCenter:Destroy()
@@ -212,17 +221,17 @@ function Tweentown:Tween(object: Instance, tweenInfo: TweenInfo, properties: {},
 	end
 
 	local isModel = object:IsA("Model")
-	local alternativeTweenObject
+	local alternativeTweenChain: TweenChain?
 	local normalCount = 0
 
 	for property, newValue in pairs(properties) do
 		if isModel and property == "CFrame" then
-			alternativeTweenObject = tweenByPrimaryPart(object, tweenInfo, {CFrame = newValue})
+			alternativeTweenChain = tweenByPrimaryPart(object, tweenInfo, {CFrame = newValue})
 			properties[property] = nil
 		else
 			local propertyType = typeof(object[property])
 			if propertyType == "ColorSequence" or propertyType == "NumberSequence" then
-				alternativeTweenObject = tweenSequence(object, property, tweenInfo, newValue)
+				alternativeTweenChain = tweenSequence(object, property, tweenInfo, newValue)
 				properties[property] = nil
 			else
 				normalCount += 1
@@ -234,7 +243,7 @@ function Tweentown:Tween(object: Instance, tweenInfo: TweenInfo, properties: {},
 		if waitToKill then
 			task.wait(tweenInfo.Time)
 		end
-		return alternativeTweenObject or TweenChain.new()
+		return alternativeTweenChain or TweenChain.new()
 	end
 
 	local thisTween = TweenService:Create(object, tweenInfo, properties)
