@@ -13,7 +13,7 @@
 
 local Order = {
 	_VERSION = "0.6.0",
-	 -- Verbose loading in the output window
+	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output
 	SilentMode = not game:GetService("RunService"):IsStudio()
@@ -297,7 +297,12 @@ do
 
 	local LocalContext
 	if RunService:IsClient() then
-		LocalContext = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
+		local LocalPlayer = game:GetService("Players").LocalPlayer
+		if LocalPlayer then
+			LocalContext = LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
+		else
+			LocalContext = game:GetService("StarterPlayer").StarterPlayerScripts.Client
+		end
 	else
 		LocalContext = game:GetService("ServerScriptService"):WaitForChild("Server")
 	end
