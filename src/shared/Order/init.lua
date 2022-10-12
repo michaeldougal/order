@@ -9,12 +9,10 @@
 
 ]]--
 
-
 -- Configuration
 
-
 local Order = {
-	_VERSION = "0.5.0",
+	_VERSION = "0.6.0",
 	 -- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output
@@ -24,9 +22,7 @@ local Order = {
 -- Override debug mode if silent mode is active
 if Order.SilentMode then Order.DebugMode = false end
 
-
 -- Output formatting
-
 
 local standardPrint = print
 function print(...)
@@ -38,9 +34,7 @@ function warn(...)
 	standardWarn("[Order]", ...)
 end
 
-
 -- Initialization
-
 
 if not Order.SilentMode then
 	print("Framework initializing...")
@@ -55,9 +49,7 @@ local TotalModules = 0
 
 local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 
-
 -- Private functions
-
 
 -- Adds a metatable to a temporary module table to let access operations fall
 -- through to the original module table.
@@ -144,9 +136,7 @@ local function indexNames(child: ModuleScript)
 	end
 end
 
-
 -- Public functions
-
 
 -- Metatable override to load modules when calling the Order table as a
 -- function.
@@ -292,13 +282,35 @@ function Order.InitializeTasks()
 	end
 end
 
-
--- Finalization
+-- Keyword linking
 
 -- Enables shared keyword to act as require
 setmetatable(shared, Order)
 -- Enables this module to act as require when required
 setmetatable(Order, Order)
+
+-- Auto initialization
+
+do
+	local RunService = game:GetService("RunService")
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+	local LocalContext
+	if RunService:IsClient() then
+		LocalContext = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
+	else
+		LocalContext = game:GetService("ServerScriptService"):WaitForChild("Server")
+	end
+	local SharedContext = ReplicatedStorage:WaitForChild("Common")
+
+	Order.IndexModulesOf(LocalContext)
+	Order.IndexModulesOf(SharedContext)
+
+	Order.LoadTasks(LocalContext:WaitForChild("tasks"))
+	Order.LoadTasks(SharedContext:WaitForChild("tasks"))
+
+	Order.InitializeTasks()
+end
 
 if not Order.SilentMode then
 	print("Framework initialized.")
