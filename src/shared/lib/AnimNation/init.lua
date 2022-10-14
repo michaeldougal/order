@@ -304,8 +304,12 @@ local function animate(spring, object, property)
 		task.wait()
 		animating, position = AnimNation.springAnimating(spring)
 	end
+
+	object[property] = spring.Target
+
 	if SpringEvents[object] then
 		SpringEvents[object][property] = nil
+
 		local stillHasSprings = false
 		for _, _ in pairs(SpringEvents[object]) do
 			stillHasSprings = true
