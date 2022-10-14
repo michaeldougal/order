@@ -12,7 +12,7 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.0",
+	_VERSION = "0.6.1",
 	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output
@@ -25,12 +25,12 @@ if Order.SilentMode then Order.DebugMode = false end
 -- Output formatting
 
 local standardPrint = print
-function print(...)
+local function print(...)
 	standardPrint("[Order]", ...)
 end
 
 local standardWarn = warn
-function warn(...)
+local function warn(...)
 	standardWarn("[Order]", ...)
 end
 
@@ -41,12 +41,21 @@ if not Order.SilentMode then
 	print("Version:", Order._VERSION)
 end
 
-local Modules = {}
-local LoadedModules = {}
-local ModulesLoading = {}
-local Tasks = {}
+-- A dictionary of known module aliases and the ModuleScripts they point to
+local Modules: {[string]: ModuleScript} = {}
+-- A dictionary of loaded ModuleScripts and the values they returned
+local LoadedModules: {[ModuleScript]: any} = {}
+-- The set of all currently loading modules
+local ModulesLoading: {[ModuleScript]: boolean} = {}
+-- An array that contains all currently loaded task module data
+local Tasks: {any} = {}
+-- The total number of discovered (but not necessarily loaded) modules
 local TotalModules = 0
+-- The current number of ancestry levels that have been indexed
+local AncestorLevelsExpanded = 0
 
+-- The metatable that provides functionality for detecting bare code referencing
+-- cyclic dependencies
 local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 
 -- Private functions
@@ -54,9 +63,9 @@ local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 -- Adds a metatable to a temporary module table to let access operations fall
 -- through to the original module table.
 local function replaceTempModule(moduleName: string, moduleData: any)
-	LoadedModules[moduleName].IsFakeModule = nil
+	LoadedModules[Modules[moduleName]].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
-		setmetatable(LoadedModules[moduleName], {
+		setmetatable(LoadedModules[Modules[moduleName]], {
 			__index = function(_, requestedKey)
 				return moduleData[requestedKey]
 			end,
@@ -72,29 +81,36 @@ local function replaceTempModule(moduleName: string, moduleData: any)
 			end
 		})
 	else
-		LoadedModules[moduleName] = moduleData
+		LoadedModules[Modules[moduleName]] = moduleData
 	end
 end
 
 -- Loads the given ModuleScript with error handling. Returns the loaded data.
 local function load(module: ModuleScript): any?
-	local moduleData
+	local moduleData: any?
+
 	shared._OrderCurrentModuleLoading = module.Name
+
 	local loadSuccess, loadMessage = pcall(function()
 		moduleData = require(module)
 	end)
+	if not loadSuccess then
+		warn("Failed to load module", module.Name, "-", loadMessage)
+	end
+
+	-- This part has to be done in pcall because sometimes developers set their
+	-- modules to be read-only
 	local renameSuccess, renameMessage = pcall(function()
 		if typeof(moduleData) == "table" then
 			moduleData._OrderNameInternal = module.Name
 		end
 	end)
-	if not loadSuccess then
-		warn("Failed to load module", module.Name, "-", loadMessage)
-	end
 	if not renameSuccess then
 		warn("Failed to add internal name to module", module.Name, "-", renameMessage)
 	end
+
 	shared._OrderCurrentModuleLoading = nil
+
 	return moduleData
 end
 
@@ -107,15 +123,25 @@ local function getAncestors(descendant: Instance): {Instance}
 		table.insert(ancestors, current)
 		current = current.Parent
 	end
+
 	return ancestors
 end
 
--- Adds all available aliases for a ModuleScript to the internal index registry
-local function indexNames(child: ModuleScript)
+-- Adds all available aliases for a ModuleScript to the internal index registry,
+-- up to the specified number of ancestors (0 refers to the script itself,
+-- indexes all ancestors if no cap specified)
+local function indexNames(child: ModuleScript, levelCap: number?)
+	-- TODO: Figure out why tables are sometimes getting passed in here
+	if typeof(child) ~= "Instance" then return end
+
+	if Order.DebugMode then
+		print("Indexing names for", child.Name, "up to", levelCap or "all levels")
+	end
+
 	local function indexName(index: string)
-		if Modules[index] then
+		if Modules[index] and Modules[index] ~= child then
 			local existing = Modules[index]
-			if typeof(existing) == "table" then
+			if typeof(existing) == "table" and not table.find(existing, child) then
 				table.insert(existing, child)
 			else
 				Modules[index] = {existing, child}
@@ -124,10 +150,13 @@ local function indexNames(child: ModuleScript)
 			Modules[index] = child
 		end
 	end
+
 	indexName(child.Name)
+
 	local ancestors = getAncestors(child)
 	local currentIndex = child.Name
-	for _: number, ancestor: Instance in pairs(ancestors) do
+	for level: number, ancestor: Instance in pairs(ancestors) do
+		if levelCap and level > levelCap then break end
 		currentIndex = ancestor.Name .. "/" .. currentIndex
 		indexName(currentIndex)
 		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Common" then
@@ -136,11 +165,31 @@ local function indexNames(child: ModuleScript)
 	end
 end
 
+local function expandNameIndex(levelCap: number)
+	if levelCap <= AncestorLevelsExpanded then return end
+
+	if Order.DebugMode then
+		print("Expanding ancestry name index to level", levelCap)
+	end
+
+	for _, moduleData in pairs(Modules) do
+		if typeof(moduleData) == "table" then
+			for _, module in pairs(moduleData) do
+				indexNames(module, levelCap)
+			end
+		elseif typeof(moduleData) == "Instance" then
+			indexNames(moduleData, levelCap)
+		end
+	end
+
+	AncestorLevelsExpanded = levelCap
+end
+
 -- Public functions
 
 -- Metatable override to load modules when calling the Order table as a
 -- function.
-function Order.__call(_: {}, module: string | ModuleScript): {}
+function Order.__call(_: {}, module: string | ModuleScript): any?
 	if Order.DebugMode then
 		print("\tRequest to load", module)
 	end
@@ -149,50 +198,67 @@ function Order.__call(_: {}, module: string | ModuleScript): {}
 		return load(module)
 	end
 
-	if not LoadedModules[module] then
-		if Modules[module] and not ModulesLoading[module] then
-			if typeof(Modules[module]) == "table" then
-				local trace = debug.traceback()
-				local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
-				local warning = trim .. ": Multiple modules found for '" .. module .. "' - please be more specific:\n"
-				local numDuplicates = #Modules[module]
-				for index, duplicate in ipairs(Modules[module]) do
-					local formattedName = string.gsub(duplicate:GetFullName(), "[.]", '/')
-					warning ..= "\t- " .. formattedName .. if index ~= numDuplicates then "\n" else ""
-				end
-				warn(warning)
-				return
+	if Modules[module] and LoadedModules[Modules[module]] then
+		return LoadedModules[Modules[module]]
+	end
+
+	if Modules[module] and not ModulesLoading[Modules[module]] then
+		if typeof(Modules[module]) == "table" then
+			local trace = debug.traceback()
+			local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
+			local warning = trim .. ": Multiple modules found for '" .. module .. "' - please be more specific:\n"
+			local numDuplicates = #Modules[module]
+			for index, duplicate in ipairs(Modules[module]) do
+				if typeof(duplicate) == "table" then continue end
+				local formattedName = string.gsub(duplicate:GetFullName(), "[.]", '/')
+				warning ..= "\t\t\t\t\t\t- " .. formattedName .. if index ~= numDuplicates then "\n" else ""
 			end
-			ModulesLoading[module] = true
-			local moduleData = load(Modules[module])
-			if LoadedModules[module] then -- Found temporary placeholder due to cyclic dependency
-				replaceTempModule(module, moduleData)
-			else
-				LoadedModules[module] = moduleData
-				if Order.DebugMode then
-					print("\tLoaded", module)
-				end
-			end
+			warn(warning)
+			return
+		end
+		ModulesLoading[Modules[module]] = true
+		local moduleData = load(Modules[module])
+		if LoadedModules[Modules[module]] then
+				-- Found temporary placeholder due to cyclic dependency
+			replaceTempModule(module, moduleData)
 		else
-			if not Modules[module] then
+			LoadedModules[Modules[module]] = moduleData
+			if Order.DebugMode then
+				print("\tLoaded", module)
+			end
+		end
+	else
+		if not Modules[module] then
+			if Order.DebugMode then
+				print("Cache miss for", module)
+			end
+			local _, ancestorLevels = string.gsub(module, "/", "")
+			if ancestorLevels > AncestorLevelsExpanded then
+				-- Expand the number of name aliases for known modules to
+				-- include number of levels potentially referenced and retry
+				expandNameIndex(ancestorLevels)
+				return Order:__call(module)
+			else
+				-- Ancestor index expansion has already reached all possibly
+				-- referenced levels, so we just don't know where the module is
 				local trace = debug.traceback()
 				local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
 				warn(trim .. ": Attempt to require unknown module '" .. module .. "'")
 				return
 			end
-			local fakeModule = {
-				IsFakeModule = true,
-				Name = module
-			}
-			setmetatable(fakeModule, CYCLE_METATABLE)
-			LoadedModules[module] = fakeModule
-			if Order.DebugMode then
-				print("\tSet", module, "to fake module")
-			end
+		end
+		local fakeModule = {
+			IsFakeModule = true,
+			Name = module
+		}
+		setmetatable(fakeModule, CYCLE_METATABLE)
+		LoadedModules[Modules[module]] = fakeModule
+		if Order.DebugMode then
+			print("\tSet", module, "to fake module")
 		end
 	end
 
-	return LoadedModules[module]
+	return LoadedModules[Modules[module]]
 end
 
 -- Indexes any ModuleScript children of the specified Instance
@@ -205,7 +271,7 @@ function Order.IndexModulesOf(location: Instance)
 		if child:IsA("ModuleScript") and child ~= script then
 			discovered += 1
 			TotalModules += 1
-			indexNames(child)
+			indexNames(child, 0)
 		end
 	end
 	if Order.DebugMode and discovered > 0 then
@@ -225,7 +291,21 @@ function Order.LoadTasks(location: Folder)
 		if child:IsA("ModuleScript") then
 			tasksLoading += 1
 			task.spawn(function()
-				table.insert(Tasks, shared(child.Name))
+				-- Tasks might have duplicates, so we find its shortest unique
+				-- path name
+				local taskName = child.Name
+				local nextParent = child.Parent
+				while Modules[taskName] and typeof(Modules[taskName]) == "table" do
+					taskName = nextParent.Name .. "/" .. taskName
+					nextParent = nextParent.Parent
+				end
+
+				local taskData = Order:__call(taskName)
+				if taskData then
+					table.insert(Tasks, taskData)
+				else
+					warn("Task", child, "failed to load")
+				end
 				tasksLoading -= 1
 			end)
 		elseif child:IsA("Folder") then
