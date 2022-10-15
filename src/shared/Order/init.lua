@@ -12,15 +12,26 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.1",
+	_VERSION = "0.6.2",
 	-- Verbose loading in the output window
 	DebugMode = false,
-	-- Disables regular output
-	SilentMode = not game:GetService("RunService"):IsStudio()
+	-- Disables regular output (does not disable warnings)
+	SilentMode = not game:GetService("RunService"):IsStudio(),
+	-- Forces all task initializers to run synchronously. This is useful when
+	-- you need to guarantee initialization order for the whole project, but it
+	-- is slower if you have any yielding in your tasks.
+	ForceSyncInit = false,
+	-- If a task is initializing for longer than this amount of seconds, Order will
+	-- warn you that you have a slow module
+	SlowInitWarnTime = 5,
 }
 
 -- Override debug mode if silent mode is active
 if Order.SilentMode then Order.DebugMode = false end
+
+-- The metatable that provides functionality for detecting bare code referencing
+-- cyclic dependencies
+local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 
 -- Output formatting
 
@@ -53,10 +64,6 @@ local Tasks: {any} = {}
 local TotalModules = 0
 -- The current number of ancestry levels that have been indexed
 local AncestorLevelsExpanded = 0
-
--- The metatable that provides functionality for detecting bare code referencing
--- cyclic dependencies
-local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
 
 -- Private functions
 
@@ -335,21 +342,43 @@ function Order.InitializeTasks()
 		end
 	end
 
+	local function initialize(moduleData)
+		local startTime = os.clock()
+		local finished = false
+		task.spawn(function()
+			while not finished do
+				task.wait()
+				if os.clock() - startTime > Order.SlowInitWarnTime then
+					warn("Slow module detected -", moduleData._OrderNameInternal, "has been initializing for more than",
+						Order.SlowInitWarnTime, "seconds")
+					break
+				end
+			end
+		end)
+		local success, message = pcall(function()
+			moduleData:Init()
+		end)
+		finished = true
+		if not success then
+			warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
+		elseif Order.DebugMode then
+			print("\tInitialized", moduleData._OrderNameInternal)
+		end
+	end
+
 	local tasksInitializing = 0
 	for _: number, moduleData: {} in pairs(Tasks) do
 		if moduleData.Init then
 			tasksInitializing += 1
-			task.spawn(function()
-				local success, message = pcall(function()
-					moduleData:Init()
-				end)
-				if not success then
-					warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
-				elseif Order.DebugMode then
-					print("\tInitialized", moduleData._OrderNameInternal)
-				end
+			if Order.ForceSyncInit or moduleData.SyncInit then
+				initialize(moduleData)
 				tasksInitializing -= 1
-			end)
+			else
+				task.spawn(function()
+					initialize(moduleData)
+					tasksInitializing -= 1
+				end)
+			end
 		end
 	end
 
