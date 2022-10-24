@@ -21,8 +21,8 @@ local Order = {
 	-- you need to guarantee initialization order for the whole project, but it
 	-- is slower if you have any yielding in your tasks.
 	ForceSyncInit = false,
-	-- If a task is initializing for longer than this amount of seconds, Order will
-	-- warn you that you have a slow module
+	-- If a task is initializing for longer than this amount of seconds, Order
+	-- will warn you that you have a slow module
 	SlowInitWarnTime = 5,
 }
 
@@ -72,6 +72,7 @@ local AncestorLevelsExpanded = 0
 local function replaceTempModule(moduleName: string, moduleData: any)
 	LoadedModules[Modules[moduleName]].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
+		-- print("Linking", moduleName)
 		setmetatable(LoadedModules[Modules[moduleName]], {
 			__index = function(_, requestedKey)
 				return moduleData[requestedKey]
@@ -226,7 +227,7 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 		ModulesLoading[Modules[module]] = true
 		local moduleData = load(Modules[module])
 		if LoadedModules[Modules[module]] then
-				-- Found temporary placeholder due to cyclic dependency
+			-- Found temporary placeholder due to cyclic dependency
 			replaceTempModule(module, moduleData)
 		else
 			LoadedModules[Modules[module]] = moduleData
