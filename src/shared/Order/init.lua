@@ -12,15 +12,18 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.2",
+	_VERSION = "0.6.3",
 	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output (does not disable warnings)
 	SilentMode = not game:GetService("RunService"):IsStudio(),
+	-- If true, runs all init functions unprotected. Can be useful to debug init
+	-- functions, as this will cause any errors to give a complete stack trace.
+	UnprotectedInit = false,
 	-- Forces all task initializers to run synchronously. This is useful when
 	-- you need to guarantee initialization order for the whole project, but it
 	-- is slower if you have any yielding in your tasks.
-	ForceSyncInit = false,
+	ForceSyncInit = true,
 	-- If a task is initializing for longer than this amount of seconds, Order
 	-- will warn you that you have a slow module
 	SlowInitWarnTime = 5,
@@ -356,9 +359,15 @@ function Order.InitializeTasks()
 				end
 			end
 		end)
-		local success, message = pcall(function()
+		local success, message
+		if Order.UnprotectedInit then
 			moduleData:Init()
-		end)
+			success = true
+		else
+			success, message = pcall(function()
+				moduleData:Init()
+			end)
+		end
 		finished = true
 		if not success then
 			warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
