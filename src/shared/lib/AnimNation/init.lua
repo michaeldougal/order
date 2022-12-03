@@ -2,7 +2,7 @@
 	Author: ChiefWildin
 	Module: AnimNation
 	Created: 10/12/2022
-	Version: 1.3.0
+	Version: 1.3.2
 
 	Built upon the foundations of Tweentown and SpringCity, AnimNation is a
 	utility that makes object animation using springs and tweens simple and
@@ -13,7 +13,14 @@
 		SpringInfo
 			A dictionary of spring properties such as {s = 10, d = 0.5}. Can be
 			constructed using any keys that you could use to create a Spring
-			object.
+			object. Possible keys:
+			Initial = Initial | i
+			Speed = Speed | s
+			Damper = Damper | d
+			Target = Target | t
+			Velocity = Velocity | v
+			Position = Position | Value | p
+			Clock = Clock
 
 		AnimChain
 			An object that listens for the end of a tween/spring animation and
@@ -295,12 +302,21 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 		local newKeypoints = table.create(numPoints)
 		for index, point in pairs(ActiveSequences[object][sequenceName]) do
 			if sequenceType == "NumberSequence" then
-				newKeypoints[index] = NumberSequenceKeypoint.new(point.Time.Value, point.Value.Value, point.Envelope.Value)
+				newKeypoints[index] = NumberSequenceKeypoint.new(
+					point.Time.Value,
+					point.Value.Value,
+					point.Envelope.Value)
 			else
-				newKeypoints[index] = ColorSequenceKeypoint.new(point.Time.Value, point.Value.Value)
+				newKeypoints[index] = ColorSequenceKeypoint.new(
+					point.Time.Value,
+					point.Value.Value)
 			end
 		end
-		object[sequenceName] = if sequenceType == "NumberSequence" then NumberSequence.new(newKeypoints) else ColorSequence.new(newKeypoints)
+		if sequenceType == "NumberSequence" then
+			object[sequenceName] = NumberSequence.new(newKeypoints)
+		else
+			object[sequenceName] = ColorSequence.new(newKeypoints)
+		end
 	end
 
 	if not ActiveSequences[object] then
@@ -345,30 +361,34 @@ local function tweenSequence(object: Instance, sequenceName: string, tweenInfo: 
 			AnimNation.tween(point.Envelope, tweenInfo, {Value = newSequence.Keypoints[index].Envelope})
 		end
 		AnimNation.tween(point.Value, tweenInfo, {Value = newSequence.Keypoints[index].Value})
-		local tweenObject = AnimNation.tween(point.Time, tweenInfo, {Value = newSequence.Keypoints[index].Time}, shouldWait):AndThen(function()
-			if index == numPoints then
-				for _, pointData in pairs(ActiveSequences[object][sequenceName]) do
-					pointData.Value:Destroy()
-					pointData.Time:Destroy()
-					if sequenceType == "NumberSequence" then
-						pointData.Envelope:Destroy()
+		local tweenObject = AnimNation.tween(
+			point.Time,
+			tweenInfo,
+			{Value = newSequence.Keypoints[index].Time},
+			shouldWait):AndThen(function()
+				if index == numPoints then
+					for _, pointData in pairs(ActiveSequences[object][sequenceName]) do
+						pointData.Value:Destroy()
+						pointData.Time:Destroy()
+						if sequenceType == "NumberSequence" then
+							pointData.Envelope:Destroy()
+						end
 					end
-				end
 
-				ActiveSequences[object][sequenceName] = nil
+					ActiveSequences[object][sequenceName] = nil
 
-				local remainingTweens = 0
-				for _, _ in pairs(ActiveSequences[object]) do
-					remainingTweens += 1
-					break
-				end
-				if remainingTweens == 0 then
-					ActiveSequences[object] = nil
-				end
+					local remainingTweens = 0
+					for _, _ in pairs(ActiveSequences[object]) do
+						remainingTweens += 1
+						break
+					end
+					if remainingTweens == 0 then
+						ActiveSequences[object] = nil
+					end
 
-				object[sequenceName] = newSequence
-			end
-		end)
+					object[sequenceName] = newSequence
+				end
+			end)
 
 		if isLast then return tweenObject end
 	end
@@ -386,9 +406,9 @@ local function createTweenInfoFromTable(info: {})
 end
 
 local function createSpringFromInfo(springInfo: SpringInfo): Spring
-	local spring = Spring.new(springInfo.Initial, springInfo.Clock)
+	local spring = Spring.new(springInfo.Initial or springInfo.i, springInfo.Clock)
 	for key, value in pairs(springInfo) do
-		if key ~= "Initial" and key ~= "Clock" then
+		if key ~= "Initial" and key ~= "i" and key ~= "Clock" then
 			spring[key] = value
 		end
 	end
@@ -437,20 +457,26 @@ local function springBindLoop()
 					activeBind = true
 					local springs = bind[1]
 					local callback = bind[2]
+					local idle = bind[3]
 					local springCount = #springs
 					local positions = table.create(springCount)
 					local velocities = table.create(springCount)
+					local thisIterationIdle = true
 					for index, spring: Spring in pairs(springs) do
 						local animating, position = spring:IsAnimating()
 						if animating then
 							positions[index] = position
 							velocities[index] = spring.Velocity
+							thisIterationIdle = false
 						else
 							positions[index] = spring.Target
 							velocities[index] = ZEROS[spring.Type]
 						end
 					end
-					callback(positions, velocities)
+					if not thisIterationIdle or not idle then
+						callback(positions, velocities)
+					end
+					bind[3] = thisIterationIdle
 				end
 				if not activeBind then
 					break
@@ -734,7 +760,7 @@ end
 -- used to create more complex and constant interactions with spring values than
 -- just a quick impulse or target.
 function AnimNation.bind(springs: {Spring}, label: string, callback: (positions: {Springable}, velocities: {Springable}) -> ())
-	SpringBinds[label] = {springs, callback}
+	SpringBinds[label] = {springs, callback, false}
 	springBindLoop()
 end
 
