@@ -12,7 +12,7 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.3",
+	_VERSION = "0.6.4",
 	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output (does not disable warnings)
@@ -238,6 +238,7 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 				print("\tLoaded", module)
 			end
 		end
+		ModulesLoading[Modules[module]] = nil
 	else
 		if not Modules[module] then
 			if Order.DebugMode then
