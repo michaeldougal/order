@@ -12,7 +12,7 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.4",
+	_VERSION = "0.6.5",
 	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output (does not disable warnings)
@@ -85,9 +85,11 @@ local function replaceTempModule(moduleName: string, moduleData: any)
 			end,
 			__tostring = function(_)
 				local result = "\nModule " .. moduleName .. ":\n"
+
 				for key, value in pairs(moduleData) do
 					result = result .. "\t" .. tostring(key) .. ": " .. tostring(value) .. "\n"
 				end
+
 				return result
 			end
 		})
@@ -130,6 +132,7 @@ end
 local function getAncestors(descendant: Instance): {Instance}
 	local ancestors = {}
 	local current = descendant.Parent
+
 	while current do
 		table.insert(ancestors, current)
 		current = current.Parent
@@ -168,8 +171,10 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 	local currentIndex = child.Name
 	for level: number, ancestor: Instance in pairs(ancestors) do
 		if levelCap and level > levelCap then break end
+
 		currentIndex = ancestor.Name .. "/" .. currentIndex
 		indexName(currentIndex)
+
 		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Common" then
 			break
 		end
@@ -219,16 +224,21 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 			local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
 			local warning = trim .. ": Multiple modules found for '" .. module .. "' - please be more specific:\n"
 			local numDuplicates = #Modules[module]
+
 			for index, duplicate in ipairs(Modules[module]) do
 				if typeof(duplicate) == "table" then continue end
 				local formattedName = string.gsub(duplicate:GetFullName(), "[.]", '/')
 				warning ..= "\t\t\t\t\t\t- " .. formattedName .. if index ~= numDuplicates then "\n" else ""
 			end
+
 			warn(warning)
+
 			return
 		end
+
 		ModulesLoading[Modules[module]] = true
 		local moduleData = load(Modules[module])
+
 		if LoadedModules[Modules[module]] then
 			-- Found temporary placeholder due to cyclic dependency
 			replaceTempModule(module, moduleData)
@@ -238,12 +248,14 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 				print("\tLoaded", module)
 			end
 		end
+
 		ModulesLoading[Modules[module]] = nil
 	else
 		if not Modules[module] then
 			if Order.DebugMode then
 				print("Cache miss for", module)
 			end
+
 			local _, ancestorLevels = string.gsub(module, "/", "")
 			if ancestorLevels > AncestorLevelsExpanded then
 				-- Expand the number of name aliases for known modules to
@@ -259,12 +271,14 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 				return
 			end
 		end
+
 		local fakeModule = {
 			IsFakeModule = true,
 			Name = module
 		}
 		setmetatable(fakeModule, CYCLE_METATABLE)
 		LoadedModules[Modules[module]] = fakeModule
+
 		if Order.DebugMode then
 			print("\tSet", module, "to fake module")
 		end
@@ -278,6 +292,7 @@ function Order.IndexModulesOf(location: Instance)
 	if Order.DebugMode then
 		print("Indexing modules -", location:GetFullName())
 	end
+
 	local discovered = 0
 	for _: number, child: Instance in ipairs(location:GetDescendants()) do
 		if child:IsA("ModuleScript") and child ~= script then
@@ -286,6 +301,7 @@ function Order.IndexModulesOf(location: Instance)
 			indexNames(child, 0)
 		end
 	end
+
 	if Order.DebugMode and discovered > 0 then
 		print("\tDiscovered", discovered, if discovered == 1 then "module" else "modules")
 	end
@@ -307,6 +323,7 @@ function Order.LoadTasks(location: Folder)
 				-- path name
 				local taskName = child.Name
 				local nextParent = child.Parent
+
 				while Modules[taskName] and typeof(Modules[taskName]) == "table" do
 					taskName = nextParent.Name .. "/" .. taskName
 					nextParent = nextParent.Parent
@@ -348,8 +365,15 @@ function Order.InitializeTasks()
 	end
 
 	local function initialize(moduleData)
+		if not moduleData._OrderInitialized then
+			moduleData._OrderInitialized = true
+		else
+			return
+		end
+
 		local startTime = os.clock()
 		local finished = false
+
 		task.spawn(function()
 			while not finished do
 				task.wait()
@@ -360,6 +384,7 @@ function Order.InitializeTasks()
 				end
 			end
 		end)
+
 		local success, message
 		if Order.UnprotectedInit then
 			moduleData:Init()
@@ -369,7 +394,9 @@ function Order.InitializeTasks()
 				moduleData:Init()
 			end)
 		end
+
 		finished = true
+
 		if not success then
 			warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
 		elseif Order.DebugMode then
@@ -415,6 +442,7 @@ do
 	local RunService = game:GetService("RunService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+	local SharedContext = ReplicatedStorage:WaitForChild("Common")
 	local LocalContext
 	if RunService:IsClient() then
 		local LocalPlayer = game:GetService("Players").LocalPlayer
@@ -426,7 +454,6 @@ do
 	else
 		LocalContext = game:GetService("ServerScriptService"):WaitForChild("Server")
 	end
-	local SharedContext = ReplicatedStorage:WaitForChild("Common")
 
 	Order.IndexModulesOf(LocalContext)
 	Order.IndexModulesOf(SharedContext)
@@ -440,5 +467,7 @@ end
 if not Order.SilentMode then
 	print("Framework initialized.")
 end
+
+shared._OrderInitialized = true
 
 return Order
