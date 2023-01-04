@@ -348,7 +348,7 @@ function Order.InitializeTasks()
 
 	local function initialize(moduleData)
 		local startTime = os.clock()
-		local finished = false
+		local finished = not (Order.ForceSyncInit or moduleData.SyncInit)
 		task.spawn(function()
 			while not finished do
 				task.wait()
