@@ -12,7 +12,7 @@
 -- Configuration
 
 local Order = {
-	_VERSION = "0.6.5",
+	_VERSION = "1.0.0",
 	-- Verbose loading in the output window
 	DebugMode = false,
 	-- Disables regular output (does not disable warnings)
