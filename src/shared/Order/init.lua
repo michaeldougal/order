@@ -28,6 +28,7 @@ local Order = {
 
 -- Initializers will be executed in the order in which they appear in this
 -- array. The options are as follows:
+--
 -- - `Name`: The name of the initialization function.
 -- - `Async`: When true, if this function yields during execution, the thread
 -- will continue to the next initializer while waiting.
@@ -35,6 +36,9 @@ local Order = {
 -- process if it errors. Async initializers are protected by default.
 -- - `WarnDelay`: The number of seconds to wait before warning about a slow
 -- execution time. Has no effect on async initializers.
+--
+-- Modules can override this configuration by defining a table named
+-- `InitConfigOverride` that contains the same structure as this table.
 local INIT_FUNCTION_CONFIG: {Initializer} = {
 	[1] = {
 		Name = "Prep",
@@ -381,7 +385,9 @@ function Order.InitializeTasks()
 	end
 
 	local function initialize(moduleData)
-		for _, initializer: Initializer in ipairs(INIT_FUNCTION_CONFIG) do
+		local config: {Initializer} = moduleData.InitConfigOverride or INIT_FUNCTION_CONFIG
+
+		for _, initializer: Initializer in ipairs(config) do
 			if moduleData[initializer.Name] then
 				local finished = false
 				local success = true
