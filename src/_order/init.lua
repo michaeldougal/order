@@ -174,7 +174,7 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 		currentIndex = ancestor.Name .. "/" .. currentIndex
 		indexName(currentIndex)
 
-		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Common" then
+		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Shared" then
 			break
 		end
 	end
@@ -450,7 +450,7 @@ do
 	local RunService = game:GetService("RunService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-	local SharedContext = ReplicatedStorage:WaitForChild("Common")
+	local SharedContext = ReplicatedStorage:WaitForChild("Shared")
 	local LocalContext
 	if RunService:IsClient() then
 		local LocalPlayer = game:GetService("Players").LocalPlayer
