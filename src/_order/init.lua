@@ -1,65 +1,29 @@
----@author ChiefWildin
-
 --[[
 
 	order.
 
-	A lightweight module loading framework for Roblox.
+	A configurable module-based framework for Roblox, written by @ChiefWildin.
 	Documentation - https://michaeldougal.github.io/order/
 
 ]]--
 
-type Initializer = {
-	Name: string,
-	Async: boolean,
-	Protected: boolean,
-	WarnDelay: number,
-}
-
--- Configuration
+-- Setup
 
 local Order = {
-	_VERSION = "2.0.0-experimental",
-	-- Verbose loading in the output window
-	DebugMode = false,
-	-- Disables regular output (does not disable warnings)
-	SilentMode = not game:GetService("RunService"):IsStudio(),
+	Version = "2.0.0-experimental",
 }
-
--- Initializers will be executed in the order in which they appear in this
--- array. The options are as follows:
---
--- - `Name`: The name of the initialization function.
--- - `Async`: When true, if this function yields during execution, the thread
--- will continue to the next initializer while waiting.
--- - `Protected`: When true, the function will not halt the initialization
--- process if it errors. Async initializers are protected by default.
--- - `WarnDelay`: The number of seconds to wait before warning about a slow
--- execution time. Has no effect on async initializers.
---
--- Modules can override this configuration by defining a table named
--- `InitConfigOverride` that contains the same structure as this table.
-local INIT_FUNCTION_CONFIG: {Initializer} = {
-	[1] = {
-		Name = "Prep",
-		Async = false,
-		Protected = true,
-		WarnDelay = 1,
-	},
-	[2] = {
-		Name = "Init",
-		Async = true,
-		Protected = true,
-		WarnDelay = 5,
-	}
-}
-
--- Override debug mode if silent mode is active
-if Order.SilentMode then Order.DebugMode = false end
 
 -- The metatable that provides functionality for detecting bare code referencing
 -- cyclic dependencies
-local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
+local CycleMetatable = require(script:WaitForChild("CycleMetatable")) ---@module CycleMetatable
+-- The configuration for this instance of the framework
+local Settings = require(script:WaitForChild("Settings")) ---@module Settings
+
+type Initializer = Settings.Initializer
+
+-- Override debug mode if silent mode is active
+if Settings.SilentMode then Settings.DebugMode = false end
+
 
 -- Output formatting
 
@@ -69,13 +33,13 @@ local function print(...)
 end
 -- Debug print (print if debug mode is active)
 local function dprint(...)
-	if Order.DebugMode then
+	if Settings.DebugMode then
 		standardPrint("[Order] [Debug] ", ...)
 	end
 end
 -- Verbose print (print if not on silent mode)
 local function vprint(...)
-	if not Order.SilentMode then
+	if not Settings.SilentMode then
 		print(...)
 	end
 end
@@ -88,7 +52,7 @@ end
 -- Initialization
 
 vprint("Framework initializing...")
-vprint("Version:", Order._VERSION)
+vprint("Version:", Order.Version)
 
 -- The current number of ancestry levels that have been indexed
 local AncestorLevelsExpanded = 0
@@ -303,7 +267,7 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 			IsFakeModule = true,
 			Name = module
 		}
-		setmetatable(fakeModule, CYCLE_METATABLE)
+		setmetatable(fakeModule, CycleMetatable)
 		LoadedModules[Modules[module]] = fakeModule
 
 		dprint("\tSet", module, "to fake module")
@@ -377,70 +341,95 @@ function Order.InitializeTasks()
 		return aPriority > bPriority
 	end)
 
-	if Order.DebugMode then
+	-- Don't use dprint to avoid too much unnecessary work
+	if Settings.DebugMode then
 		print("\tCurrent initialization order:")
 		for index: number, moduleData: {} in pairs(Tasks) do
 			print("\t\t" .. index .. ')', NameRegistry[moduleData] or moduleData)
 		end
 	end
 
-	local function initialize(moduleData)
-		local config: {Initializer} = moduleData.InitConfigOverride or INIT_FUNCTION_CONFIG
+	local function initialize(moduleData: {}, initializer: Initializer)
+		if moduleData[initializer.Name] then
+			local finished = false
+			local success = true
+			local message
 
-		for _, initializer: Initializer in ipairs(config) do
-			if moduleData[initializer.Name] then
-				local finished = false
-				local success = true
-				local message
-
-				if not initializer.Async then
-					local startTime = os.clock()
-					task.spawn(function()
-						while not finished do
-							task.wait()
-							if os.clock() - startTime > initializer.WarnDelay then
-								warn(
-									"Slow module detected -",
-									NameRegistry[moduleData] or moduleData,
-									"has been initializing for more than",
-									initializer.WarnDelay,
-									"seconds"
-								)
-								break
-							end
+			if not initializer.Async then
+				local startTime = os.clock()
+				task.spawn(function()
+					while not finished do
+						task.wait()
+						if os.clock() - startTime > initializer.WarnDelay then
+							warn(
+								"Slow module detected -",
+								NameRegistry[moduleData] or moduleData,
+								"has been initializing for more than",
+								initializer.WarnDelay,
+								"seconds"
+							)
+							break
 						end
-					end)
-
-					if initializer.Protected then
-						success, message = pcall(moduleData[initializer.Name], moduleData)
-					else
-						moduleData[initializer.Name](moduleData)
 					end
-				else
-					task.spawn(moduleData[initializer.Name], moduleData)
-				end
+				end)
 
-				finished = true
-
-				if not success then
-					warn(
-						"Failed to execute initializer '" .. initializer.Name .. "' for module",
-						NameRegistry[moduleData] or moduleData,
-						"-",
-						message
-					)
+				if initializer.Protected then
+					success, message = pcall(moduleData[initializer.Name], moduleData)
 				else
-					dprint(
-						"\t::" .. initializer.Name .. "() executed successfully for",
-						NameRegistry[moduleData] or moduleData
-					)
+					moduleData[initializer.Name](moduleData)
 				end
+			else
+				task.spawn(moduleData[initializer.Name], moduleData)
+			end
+
+			finished = true
+
+			if not success then
+				warn(
+					"Failed to execute initializer '" .. initializer.Name .. "' for module",
+					NameRegistry[moduleData] or moduleData,
+					"-",
+					message
+				)
+			else
+				dprint(
+					"\t::" .. initializer.Name .. "() executed successfully for",
+					NameRegistry[moduleData] or moduleData
+				)
 			end
 		end
 	end
 
-	for _: number, moduleData: {} in pairs(Tasks) do
-		initialize(moduleData)
+	if Settings.InitOrder == "Individual" then
+		for _: number, moduleData: {} in ipairs(Tasks) do
+			local config = moduleData.InitConfigOverride or Settings.InitFunctionConfig
+			for _, initializer: Initializer in ipairs(config) do
+				initialize(moduleData, initializer)
+			end
+			dprint("Initialized task -", NameRegistry[moduleData] or moduleData)
+		end
+	elseif Settings.InitOrder == "Project" then
+		-- Figure out how many total stages there are since tasks can
+		-- individually specify more than the global config does
+		local maxInitStages = #Settings.InitFunctionConfig
+		for _: number, moduleData: {} in ipairs(Tasks) do
+			maxInitStages = math.max(maxInitStages, moduleData.InitConfigOverride and #moduleData.InitConfigOverride or 0)
+		end
+		dprint("Initializing tasks in", maxInitStages, "stages...")
+
+		-- Execute each stage
+		for i = 1, maxInitStages do
+			for _: number, moduleData: {} in ipairs(Tasks) do
+				local config = moduleData.InitConfigOverride or Settings.InitFunctionConfig
+				local initializer = config[i]
+				if initializer then
+					initialize(moduleData, initializer)
+				end
+			end
+			dprint("Initialization stage", i, "complete.")
+		end
+	else
+		warn("Cannot initialize tasks - unsupported initialization order specified:", Settings.InitOrder)
 	end
 
 	table.clear(Tasks)
