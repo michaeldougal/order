@@ -24,7 +24,7 @@ return {
 	-- before moving on to the next task. "Project" means that all tasks will
 	-- run their first initializers, then all tasks will run their second
 	-- initializers, and so on.
-	InitOrder = "Individual",
+	InitOrder = "Project",
 
 	-- Initializers will be executed in the order in which they appear in this
 	-- array. The options are as follows:
