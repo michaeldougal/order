@@ -4,6 +4,7 @@
 
 	A configurable module-based framework for Roblox, written by @ChiefWildin.
 	Full documentation - https://michaeldougal.github.io/order/
+	(documentation update for v2.0 is still pending as of 6/25/2023)
 
 ]]--
 
