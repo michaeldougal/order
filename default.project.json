@@ -5,9 +5,12 @@
 
 		"ReplicatedStorage": {
 			"$className": "ReplicatedStorage",
-			"Common": {
+			"Shared": {
 				"$path": "src/shared",
-				"$ignoreUnknownInstances": true
+				"$ignoreUnknownInstances": true,
+				"Order": {
+					"$path": "src/_order"
+				}
 			}
 		},
 

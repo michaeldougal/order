@@ -1,46 +1,48 @@
----@author ChiefWildin
-
 --[[
 
 	order.
 
-	A lightweight module loading framework for Roblox.
-	Documentation - https://michaeldougal.github.io/order/
+	A configurable module-based framework for Roblox, written by @ChiefWildin.
+	Full documentation - https://michaeldougal.github.io/order/
+	(documentation update for v2.0 is still pending as of 6/25/2023)
 
 ]]--
 
--- Configuration
+-- Setup
 
 local Order = {
-	_VERSION = "1.0.0",
-	-- Verbose loading in the output window
-	DebugMode = false,
-	-- Disables regular output (does not disable warnings)
-	SilentMode = not game:GetService("RunService"):IsStudio(),
-	-- If true, runs all init functions unprotected. Can be useful to debug init
-	-- functions, as this will cause any errors to give a complete stack trace.
-	UnprotectedInit = false,
-	-- Forces all task initializers to run synchronously. This is useful when
-	-- you need to guarantee initialization order for the whole project, but it
-	-- is slower if you have any yielding in your tasks.
-	ForceSyncInit = true,
-	-- If a task is initializing for longer than this amount of seconds, Order
-	-- will warn you that you have a slow module
-	SlowInitWarnTime = 5,
+	Version = "2.0.0",
 }
-
--- Override debug mode if silent mode is active
-if Order.SilentMode then Order.DebugMode = false end
 
 -- The metatable that provides functionality for detecting bare code referencing
 -- cyclic dependencies
-local CYCLE_METATABLE = require(script:WaitForChild("CycleMetatable"))
+local CycleMetatable = require(script:WaitForChild("CycleMetatable")) ---@module CycleMetatable
+-- The configuration for this instance of the framework
+local Settings = require(script:WaitForChild("Settings")) ---@module Settings
+
+type Initializer = Settings.Initializer
+
+-- Override debug mode if silent mode is active
+if Settings.SilentMode then Settings.DebugMode = false end
+
 
 -- Output formatting
 
 local standardPrint = print
 local function print(...)
 	standardPrint("[Order]", ...)
+end
+-- Debug print (print if debug mode is active)
+local function dprint(...)
+	if Settings.DebugMode then
+		standardPrint("[Order] [Debug] ", ...)
+	end
+end
+-- Verbose print (print if not on silent mode)
+local function vprint(...)
+	if not Settings.SilentMode then
+		print(...)
+	end
 end
 
 local standardWarn = warn
@@ -50,23 +52,23 @@ end
 
 -- Initialization
 
-if not Order.SilentMode then
-	print("Framework initializing...")
-	print("Version:", Order._VERSION)
-end
+vprint("Framework initializing...")
+vprint("Version:", Order.Version)
 
--- A dictionary of known module aliases and the ModuleScripts they point to
-local Modules: {[string]: ModuleScript} = {}
+-- The current number of ancestry levels that have been indexed
+local AncestorLevelsExpanded = 0
 -- A dictionary of loaded ModuleScripts and the values they returned
 local LoadedModules: {[ModuleScript]: any} = {}
+-- A dictionary of known module aliases and the ModuleScripts they point to
+local Modules: {[string]: ModuleScript} = {}
 -- The set of all currently loading modules
 local ModulesLoading: {[ModuleScript]: boolean} = {}
+-- A dictionary that relates module data tables to the modules' names
+local NameRegistry: {[{}]: string} = {}
 -- An array that contains all currently loaded task module data
 local Tasks: {any} = {}
 -- The total number of discovered (but not necessarily loaded) modules
 local TotalModules = 0
--- The current number of ancestry levels that have been indexed
-local AncestorLevelsExpanded = 0
 
 -- Private functions
 
@@ -75,7 +77,6 @@ local AncestorLevelsExpanded = 0
 local function replaceTempModule(moduleName: string, moduleData: any)
 	LoadedModules[Modules[moduleName]].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
-		-- print("Linking", moduleName)
 		setmetatable(LoadedModules[Modules[moduleName]], {
 			__index = function(_, requestedKey)
 				return moduleData[requestedKey]
@@ -115,7 +116,7 @@ local function load(module: ModuleScript): any?
 	-- modules to be read-only
 	local renameSuccess, renameMessage = pcall(function()
 		if typeof(moduleData) == "table" then
-			moduleData._OrderNameInternal = module.Name
+			NameRegistry[moduleData] = module.Name
 		end
 	end)
 	if not renameSuccess then
@@ -148,9 +149,7 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 	-- TODO: Figure out why tables are sometimes getting passed in here
 	if typeof(child) ~= "Instance" then return end
 
-	if Order.DebugMode then
-		print("Indexing names for", child.Name, "up to", levelCap or "all levels")
-	end
+	dprint("Indexing names for", child.Name, "up to", levelCap or "all levels")
 
 	local function indexName(index: string)
 		if Modules[index] and Modules[index] ~= child then
@@ -175,7 +174,7 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 		currentIndex = ancestor.Name .. "/" .. currentIndex
 		indexName(currentIndex)
 
-		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Common" then
+		if ancestor.Name == "ServerScriptService" or ancestor.Name == "PlayerScripts" or ancestor.Name == "Shared" then
 			break
 		end
 	end
@@ -184,9 +183,7 @@ end
 local function expandNameIndex(levelCap: number)
 	if levelCap <= AncestorLevelsExpanded then return end
 
-	if Order.DebugMode then
-		print("Expanding ancestry name index to level", levelCap)
-	end
+	dprint("Expanding ancestry name index to level", levelCap)
 
 	for _, moduleData in pairs(Modules) do
 		if typeof(moduleData) == "table" then
@@ -206,9 +203,7 @@ end
 -- Metatable override to load modules when calling the Order table as a
 -- function.
 function Order.__call(_: {}, module: string | ModuleScript): any?
-	if Order.DebugMode then
-		print("\tRequest to load", module)
-	end
+	dprint("\tRequest to load", module)
 
 	if typeof(module) == "Instance" then
 		return load(module)
@@ -244,17 +239,13 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 			replaceTempModule(module, moduleData)
 		else
 			LoadedModules[Modules[module]] = moduleData
-			if Order.DebugMode then
-				print("\tLoaded", module)
-			end
+			dprint("\tLoaded", module)
 		end
 
 		ModulesLoading[Modules[module]] = nil
 	else
 		if not Modules[module] then
-			if Order.DebugMode then
-				print("Cache miss for", module)
-			end
+			dprint("Cache miss for", module)
 
 			local _, ancestorLevels = string.gsub(module, "/", "")
 			if ancestorLevels > AncestorLevelsExpanded then
@@ -276,12 +267,10 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 			IsFakeModule = true,
 			Name = module
 		}
-		setmetatable(fakeModule, CYCLE_METATABLE)
+		setmetatable(fakeModule, CycleMetatable)
 		LoadedModules[Modules[module]] = fakeModule
 
-		if Order.DebugMode then
-			print("\tSet", module, "to fake module")
-		end
+		dprint("\tSet", module, "to fake module")
 	end
 
 	return LoadedModules[Modules[module]]
@@ -289,9 +278,7 @@ end
 
 -- Indexes any ModuleScript children of the specified Instance
 function Order.IndexModulesOf(location: Instance)
-	if Order.DebugMode then
-		print("Indexing modules -", location:GetFullName())
-	end
+	dprint("Indexing modules -", location:GetFullName())
 
 	local discovered = 0
 	for _: number, child: Instance in ipairs(location:GetDescendants()) do
@@ -302,8 +289,8 @@ function Order.IndexModulesOf(location: Instance)
 		end
 	end
 
-	if Order.DebugMode and discovered > 0 then
-		print("\tDiscovered", discovered, if discovered == 1 then "module" else "modules")
+	if discovered > 0 then
+		dprint("\tDiscovered", discovered, if discovered == 1 then "module" else "modules")
 	end
 end
 
@@ -311,9 +298,8 @@ end
 -- and queues them for initialization. Recursively loads all children of any
 -- discovered Folders as well.
 function Order.LoadTasks(location: Folder)
-	if Order.DebugMode then
-		print("Loading tasks -", location:GetFullName())
-	end
+	dprint("Loading tasks -", location:GetFullName())
+
 	local tasksLoading = 0
 	for _: number, child: ModuleScript | Folder in ipairs(location:GetChildren()) do
 		if child:IsA("ModuleScript") then
@@ -347,9 +333,7 @@ end
 -- Initializes all currently loaded tasks. Clears the task initialization queue
 -- after all tasks have been initialized.
 function Order.InitializeTasks()
-	if not Order.SilentMode then
-		print("Initializing tasks...")
-	end
+	vprint("Initializing tasks...")
 
 	table.sort(Tasks, function(a, b)
 		local aPriority = a.Priority or 0
@@ -357,75 +341,100 @@ function Order.InitializeTasks()
 		return aPriority > bPriority
 	end)
 
-	if Order.DebugMode then
+	-- Don't use dprint to avoid too much unnecessary work
+	if Settings.DebugMode then
 		print("\tCurrent initialization order:")
 		for index: number, moduleData: {} in pairs(Tasks) do
-			print("\t\t" .. index .. ')', moduleData._OrderNameInternal)
+			print("\t\t" .. index .. ')', NameRegistry[moduleData] or moduleData)
 		end
 	end
 
-	local function initialize(moduleData)
-		if not moduleData._OrderInitialized then
-			moduleData._OrderInitialized = true
-		else
-			return
-		end
+	local function initialize(moduleData: {}, initializer: Initializer)
+		if moduleData[initializer.Name] then
+			local finished = false
+			local success = true
+			local message
 
-		local startTime = os.clock()
-		local finished = not (Order.ForceSyncInit or moduleData.SyncInit)
-		task.spawn(function()
-			while not finished do
-				task.wait()
-				if os.clock() - startTime > Order.SlowInitWarnTime then
-					warn("Slow module detected -", moduleData._OrderNameInternal, "has been initializing for more than",
-						Order.SlowInitWarnTime, "seconds")
-					break
+			if not initializer.Async then
+				local startTime = os.clock()
+				task.spawn(function()
+					while not finished do
+						task.wait()
+						if os.clock() - startTime > initializer.WarnDelay then
+							warn(
+								"Slow module detected -",
+								NameRegistry[moduleData] or moduleData,
+								"has been initializing for more than",
+								initializer.WarnDelay,
+								"seconds"
+							)
+							break
+						end
+					end
+				end)
+
+				if initializer.Protected then
+					success, message = pcall(moduleData[initializer.Name], moduleData)
+				else
+					moduleData[initializer.Name](moduleData)
+				end
+			else
+				task.spawn(moduleData[initializer.Name], moduleData)
+			end
+
+			finished = true
+
+			if not success then
+				warn(
+					"Failed to execute initializer '" .. initializer.Name .. "' for module",
+					NameRegistry[moduleData] or moduleData,
+					"-",
+					message
+				)
+			else
+				dprint(
+					"\t::" .. initializer.Name .. "() executed successfully for",
+					NameRegistry[moduleData] or moduleData
+				)
+			end
+		end
+	end
+
+	if Settings.InitOrder == "Individual" then
+		for _: number, moduleData: {} in ipairs(Tasks) do
+			local config = moduleData.InitConfigOverride or Settings.InitFunctionConfig
+			for _, initializer: Initializer in ipairs(config) do
+				initialize(moduleData, initializer)
+			end
+			dprint("Initialized task -", NameRegistry[moduleData] or moduleData)
+		end
+	elseif Settings.InitOrder == "Project" then
+		-- Figure out how many total stages there are since tasks can
+		-- individually specify more than the global config does
+		local maxInitStages = #Settings.InitFunctionConfig
+		for _: number, moduleData: {} in ipairs(Tasks) do
+			maxInitStages = math.max(maxInitStages, moduleData.InitConfigOverride and #moduleData.InitConfigOverride or 0)
+		end
+		dprint("Initializing tasks in", maxInitStages, "stages...")
+
+		-- Execute each stage
+		for i = 1, maxInitStages do
+			for _: number, moduleData: {} in ipairs(Tasks) do
+				local config = moduleData.InitConfigOverride or Settings.InitFunctionConfig
+				local initializer = config[i]
+				if initializer then
+					initialize(moduleData, initializer)
 				end
 			end
-		end)
-
-		local success, message
-		if Order.UnprotectedInit then
-			moduleData:Init()
-			success = true
-		else
-			success, message = pcall(function()
-				moduleData:Init()
-			end)
+			dprint("Initialization stage", i, "complete.")
 		end
-
-		finished = true
-
-		if not success then
-			warn("Failed to initialize module", moduleData._OrderNameInternal, "-", message)
-		elseif Order.DebugMode then
-			print("\tInitialized", moduleData._OrderNameInternal)
-		end
+	else
+		warn("Cannot initialize tasks - unsupported initialization order specified:", Settings.InitOrder)
 	end
-
-	local tasksInitializing = 0
-	for _: number, moduleData: {} in pairs(Tasks) do
-		if moduleData.Init then
-			tasksInitializing += 1
-			if Order.ForceSyncInit or moduleData.SyncInit then
-				initialize(moduleData)
-				tasksInitializing -= 1
-			else
-				task.spawn(function()
-					initialize(moduleData)
-					tasksInitializing -= 1
-				end)
-			end
-		end
-	end
-
-	while tasksInitializing > 0 do task.wait() end
 
 	table.clear(Tasks)
 
-	if not Order.SilentMode then
-		print("All tasks initialized.")
-	end
+	vprint("All tasks initialized.")
 end
 
 -- Keyword linking
@@ -441,7 +450,7 @@ do
 	local RunService = game:GetService("RunService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-	local SharedContext = ReplicatedStorage:WaitForChild("Common")
+	local SharedContext = ReplicatedStorage:WaitForChild("Shared")
 	local LocalContext
 	if RunService:IsClient() then
 		local LocalPlayer = game:GetService("Players").LocalPlayer
@@ -463,10 +472,8 @@ do
 	Order.InitializeTasks()
 end
 
-if not Order.SilentMode then
-	print("Framework initialized.")
-end
-
 shared._OrderInitialized = true
+
+vprint("Framework initialized.")
 
 return Order
