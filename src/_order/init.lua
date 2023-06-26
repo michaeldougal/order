@@ -3,14 +3,14 @@
 	order.
 
 	A configurable module-based framework for Roblox, written by @ChiefWildin.
-	Documentation - https://michaeldougal.github.io/order/
+	Full documentation - https://michaeldougal.github.io/order/
 
 ]]--
 
 -- Setup
 
 local Order = {
-	Version = "2.0.0-experimental",
+	Version = "2.0.0",
 }
 
 -- The metatable that provides functionality for detecting bare code referencing
@@ -76,7 +76,6 @@ local TotalModules = 0
 local function replaceTempModule(moduleName: string, moduleData: any)
 	LoadedModules[Modules[moduleName]].IsFakeModule = nil
 	if typeof(moduleData) == "table" then
-		-- print("Linking", moduleName)
 		setmetatable(LoadedModules[Modules[moduleName]], {
 			__index = function(_, requestedKey)
 				return moduleData[requestedKey]
