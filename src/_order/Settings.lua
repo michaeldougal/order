@@ -6,19 +6,15 @@ export type Initializer = {
 } 
 
 export type OrderSettings = {
-	_VERSION: string,
 	DebugMode: boolean,
-	SilentMode: boolean,
 	InitOrder: "Individual" | "Project",
 	InitFunctionConfig: {Initializer},
+	SilentMode: boolean,
 }
 
 return {
 	-- Verbose loading in the output window
 	DebugMode = false,
-
-	-- Disables regular output (does not disable warnings)
-	SilentMode = not game:GetService("RunService"):IsStudio(),
 
 	-- "Individual" means that each task will run its initializers in order
 	-- before moving on to the next task. "Project" means that all tasks will
@@ -53,4 +49,7 @@ return {
 			WarnDelay = 5,
 		}
 	},
+
+	-- Disables regular output (does not disable warnings)
+	SilentMode = not game:GetService("RunService"):IsStudio(),
 } :: OrderSettings
