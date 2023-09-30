@@ -50,6 +50,12 @@ return {
 		}
 	},
 
+	-- [EXPERIMENTAL]
+	-- When true, the framework will not assume that it is the main or only
+	-- framework in the game. Use of `shared` will be unavailable. Intended for
+	-- use with plugins, packages, or other small scope projects.
+	PortableMode = false,
+
 	-- Disables regular output (does not disable warnings)
 	SilentMode = not game:GetService("RunService"):IsStudio(),
 } :: OrderSettings
