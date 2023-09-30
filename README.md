@@ -4,5 +4,4 @@ A module loader framework created by <a href="https://twitter.com/chiefwildin">@
 
 ## Getting Started
 Welcome to the source files. Check out [the documention](https://michaeldougal.github.io/order)!
-(documentation update for v2.0 is still pending as of 6/25/2023)
 </div>
