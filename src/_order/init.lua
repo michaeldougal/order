@@ -10,7 +10,7 @@
 -- Setup
 
 local Order = {
-	Version = "2.0.0",
+	Version = "2.1.0",
 }
 
 -- The metatable that provides functionality for detecting bare code referencing
@@ -454,7 +454,7 @@ if not Settings.PortableMode then
 	local LocalContext
 	if RunService:IsClient() then
 		local LocalPlayer = game:GetService("Players").LocalPlayer
-		if LocalPlayer then
+		if LocalPlayer and RunService:IsRunning() then
 			LocalContext = LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
 		else
 			LocalContext = game:GetService("StarterPlayer").StarterPlayerScripts.Client
