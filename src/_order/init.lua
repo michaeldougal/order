@@ -4,14 +4,13 @@
 
 	A configurable module-based framework for Roblox, written by @ChiefWildin.
 	Full documentation - https://michaeldougal.github.io/order/
-	(documentation update for v2.0 is still pending as of 6/25/2023)
 
 ]]--
 
 -- Setup
 
 local Order = {
-	Version = "2.0.0",
+	Version = "2.1.0",
 }
 
 -- The metatable that provides functionality for detecting bare code referencing
@@ -24,7 +23,6 @@ type Initializer = Settings.Initializer
 
 -- Override debug mode if silent mode is active
 if Settings.SilentMode then Settings.DebugMode = false end
-
 
 -- Output formatting
 
@@ -103,7 +101,7 @@ end
 local function load(module: ModuleScript): any?
 	local moduleData: any?
 
-	shared._OrderCurrentModuleLoading = module.Name
+	CycleMetatable.CurrentModuleLoading = module.Name
 
 	local loadSuccess, loadMessage = pcall(function()
 		moduleData = require(module)
@@ -123,7 +121,7 @@ local function load(module: ModuleScript): any?
 		warn("Failed to add internal name to module", module.Name, "-", renameMessage)
 	end
 
-	shared._OrderCurrentModuleLoading = nil
+	CycleMetatable.CurrentModuleLoading = nil
 
 	return moduleData
 end
@@ -439,14 +437,16 @@ end
 
 -- Keyword linking
 
--- Enables shared keyword to act as require
-setmetatable(shared, Order)
--- Enables this module to act as require when required
+-- Enables shared keyword to act as require()
+if not Settings.PortableMode then
+	setmetatable(shared, Order)
+end
+-- Enables this module to act as require() when required
 setmetatable(Order, Order)
 
 -- Auto initialization
 
-do
+if not Settings.PortableMode then
 	local RunService = game:GetService("RunService")
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -454,7 +454,7 @@ do
 	local LocalContext
 	if RunService:IsClient() then
 		local LocalPlayer = game:GetService("Players").LocalPlayer
-		if LocalPlayer then
+		if LocalPlayer and RunService:IsRunning() then
 			LocalContext = LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
 		else
 			LocalContext = game:GetService("StarterPlayer").StarterPlayerScripts.Client
@@ -470,9 +470,9 @@ do
 	Order.LoadTasks(SharedContext:WaitForChild("tasks"))
 
 	Order.InitializeTasks()
-end
 
-shared._OrderInitialized = true
+	shared._OrderInitialized = true
+end
 
 vprint("Framework initialized.")
 

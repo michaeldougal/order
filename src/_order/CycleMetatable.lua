@@ -1,13 +1,15 @@
+local CycleMetatable
+
 local function warning(self, message: string)
 	warn("Detected bare code referencing a cyclic dependency ("
-		.. tostring(shared._OrderCurrentModuleLoading) .. " -> "
+		.. tostring(CycleMetatable.CurrentModuleLoading) .. " -> "
 		.. tostring(self.Name)
 		.. ").",
 		message,
 		debug.traceback(1))
 end
 
-return {
+CycleMetatable = {
 	__index = function(self, key)
 		warning(self, "Attempt to read key '" .. key .. "'. Please revise.")
 	end,
@@ -55,5 +57,9 @@ return {
 	end,
 	__len = function(self)
 		warning(self, "Attempt to get length of module. Please revise.")
-	end
+	end,
+
+	CurrentModuleLoading = "Unknown",
 }
+
+return CycleMetatable
