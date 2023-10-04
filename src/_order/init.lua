@@ -10,7 +10,7 @@
 -- Setup
 
 local Order = {
-	Version = "2.1.0",
+	Version = "2.1.1",
 }
 
 -- The metatable that provides functionality for detecting bare code referencing
@@ -466,10 +466,12 @@ if not Settings.PortableMode then
 	Order.IndexModulesOf(LocalContext)
 	Order.IndexModulesOf(SharedContext)
 
-	Order.LoadTasks(LocalContext:WaitForChild("tasks"))
-	Order.LoadTasks(SharedContext:WaitForChild("tasks"))
+	if RunService:IsRunning() then
+		Order.LoadTasks(LocalContext:WaitForChild("tasks"))
+		Order.LoadTasks(SharedContext:WaitForChild("tasks"))
 
-	Order.InitializeTasks()
+		Order.InitializeTasks()
+	end
 
 	shared._OrderInitialized = true
 end
