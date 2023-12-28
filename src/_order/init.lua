@@ -85,8 +85,8 @@ local function replaceTempModule(moduleName: string, moduleData: any)
 			__tostring = function(_)
 				local result = "\nModule " .. moduleName .. ":\n"
 
-				for key, value in pairs(moduleData) do
-					result = result .. "\t" .. tostring(key) .. ": " .. tostring(value) .. "\n"
+				for key, value in moduleData do
+					result ..= "\t" .. tostring(key) .. ": " .. tostring(value) .. "\n"
 				end
 
 				return result
@@ -166,7 +166,7 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 
 	local ancestors = getAncestors(child)
 	local currentIndex = child.Name
-	for level: number, ancestor: Instance in pairs(ancestors) do
+	for level: number, ancestor: Instance in ancestors do
 		if levelCap and level > levelCap then break end
 
 		currentIndex = ancestor.Name .. "/" .. currentIndex
@@ -183,9 +183,9 @@ local function expandNameIndex(levelCap: number)
 
 	dprint("Expanding ancestry name index to level", levelCap)
 
-	for _, moduleData in pairs(Modules) do
+	for _, moduleData in Modules do
 		if typeof(moduleData) == "table" then
-			for _, module in pairs(moduleData) do
+			for _, module in moduleData do
 				indexNames(module, levelCap)
 			end
 		elseif typeof(moduleData) == "Instance" then
@@ -342,7 +342,7 @@ function Order.InitializeTasks()
 	-- Don't use dprint to avoid too much unnecessary work
 	if Settings.DebugMode then
 		print("\tCurrent initialization order:")
-		for index: number, moduleData: {} in pairs(Tasks) do
+		for index: number, moduleData: {} in Tasks do
 			print("\t\t" .. index .. ')', NameRegistry[moduleData] or moduleData)
 		end
 	end
