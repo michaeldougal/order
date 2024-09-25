@@ -1,1 +1,1 @@
-require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Order"))
+require(game:GetService("ReplicatedStorage"):WaitForChild("Order"))

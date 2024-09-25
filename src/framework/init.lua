@@ -5,12 +5,17 @@
 	A configurable module-based framework for Roblox, written by @ChiefWildin.
 	Full documentation - https://michaeldougal.github.io/order/
 
-]]--
+]]
+
+-- Services
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 -- Setup
 
 local Order = {
-	Version = "2.1.1",
+	Version = "2.2.0",
 }
 
 -- The metatable that provides functionality for detecting bare code referencing
@@ -144,8 +149,13 @@ end
 -- up to the specified number of ancestors (0 refers to the script itself,
 -- indexes all ancestors if no cap specified)
 local function indexNames(child: ModuleScript, levelCap: number?)
-	-- TODO: Figure out why tables are sometimes getting passed in here
-	if typeof(child) ~= "Instance" then return end
+	-- Tables were getting passed in as a result of a bug where it would
+	-- reindex level 0 on an expansion pass and attempt to store a reference to
+	-- a duplicate module table instead of an actual module. This is now
+	-- patched, but the guard is left here just in case.
+	if typeof(child) ~= "Instance" then
+		return
+	end
 
 	dprint("Indexing names for", child.Name, "up to", levelCap or "all levels")
 
@@ -162,7 +172,9 @@ local function indexNames(child: ModuleScript, levelCap: number?)
 		end
 	end
 
-	indexName(child.Name)
+	if levelCap == 0 then
+		indexName(child.Name)
+	end
 
 	local ancestors = getAncestors(child)
 	local currentIndex = child.Name
@@ -181,17 +193,20 @@ end
 local function expandNameIndex(levelCap: number)
 	if levelCap <= AncestorLevelsExpanded then return end
 
-	dprint("Expanding ancestry name index to level", levelCap)
+	dprint("Expanding ancestry name index to level", levelCap, "- previous index:", Modules)
 
-	for _, moduleData in pairs(Modules) do
+	for _, moduleData in Modules do
+		-- Tables are used to store modules with duplicate names
 		if typeof(moduleData) == "table" then
-			for _, module in pairs(moduleData) do
+			for _, module in moduleData do
 				indexNames(module, levelCap)
 			end
 		elseif typeof(moduleData) == "Instance" then
 			indexNames(moduleData, levelCap)
 		end
 	end
+
+	dprint("Expansion complete. New ancestry name index:", Modules)
 
 	AncestorLevelsExpanded = levelCap
 end
@@ -256,7 +271,7 @@ function Order.__call(_: {}, module: string | ModuleScript): any?
 				-- referenced levels, so we just don't know where the module is
 				local trace = debug.traceback()
 				local trim = string.sub(trace,  string.find(trace, "__call") + 7, string.len(trace) - 1)
-				warn(trim .. ": Attempt to require unknown module '" .. module .. "'")
+				warn(`{trim}: Attempt to require unknown module '{module}' ({typeof(module)})`)
 				return
 			end
 		end
@@ -303,8 +318,9 @@ function Order.LoadTasks(location: Folder)
 		if child:IsA("ModuleScript") then
 			tasksLoading += 1
 			task.spawn(function()
-				-- Tasks might have duplicates, so we find its shortest unique
-				-- path name
+				-- We might have two or more tasks with the same name, so we
+				-- find the shortest unique path to the task. We must require by
+				-- name in order to facilitate cyclical dependencies.
 				local taskName = child.Name
 				local nextParent = child.Parent
 
@@ -317,15 +333,19 @@ function Order.LoadTasks(location: Folder)
 				if taskData then
 					table.insert(Tasks, taskData)
 				else
-					warn("Task", child, "failed to load")
+					warn(`Task {child} failed to load - requested as {taskName}`)
 				end
+
 				tasksLoading -= 1
 			end)
 		elseif child:IsA("Folder") then
 			Order.LoadTasks(child)
 		end
 	end
-	while tasksLoading > 0 do task.wait() end
+
+	while tasksLoading > 0 do
+		task.wait()
+	end
 end
 
 -- Initializes all currently loaded tasks. Clears the task initialization queue
@@ -357,17 +377,19 @@ function Order.InitializeTasks()
 				local startTime = os.clock()
 				task.spawn(function()
 					while not finished do
-						task.wait()
 						if os.clock() - startTime > initializer.WarnDelay then
 							warn(
 								"Slow module detected -",
 								NameRegistry[moduleData] or moduleData,
 								"has been initializing for more than",
 								initializer.WarnDelay,
-								"seconds"
+								`second{if initializer.WarnDelay == 1 then "" else "s"} in the`,
+								initializer.Name,
+								"phase"
 							)
 							break
 						end
+						task.wait()
 					end
 				end)
 
@@ -384,7 +406,7 @@ function Order.InitializeTasks()
 
 			if not success then
 				warn(
-					"Failed to execute initializer '" .. initializer.Name .. "' for module",
+					"Failed to execute " .. initializer.Name .. " phase for module",
 					NameRegistry[moduleData] or moduleData,
 					"-",
 					message
@@ -445,11 +467,7 @@ end
 setmetatable(Order, Order)
 
 -- Auto initialization
-
 if not Settings.PortableMode then
-	local RunService = game:GetService("RunService")
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 	local SharedContext = ReplicatedStorage:WaitForChild("Shared")
 	local LocalContext
 	if RunService:IsClient() then
@@ -466,10 +484,22 @@ if not Settings.PortableMode then
 	Order.IndexModulesOf(LocalContext)
 	Order.IndexModulesOf(SharedContext)
 
-	if RunService:IsRunning() then
-		Order.LoadTasks(LocalContext:WaitForChild("tasks"))
-		Order.LoadTasks(SharedContext:WaitForChild("tasks"))
+	local function loadContextTasks(context: Instance)
+		for _, child: Folder in ipairs(context:GetChildren()) do
+			if not child:IsA("Folder") then
+				continue
+			end
+			if child.Name == "tasks" then
+				Order.LoadTasks(child)
+			else
+				loadContextTasks(child)
+			end
+		end
+	end
 
+	if RunService:IsRunning() then
+		loadContextTasks(LocalContext)
+		loadContextTasks(SharedContext)
 		Order.InitializeTasks()
 	end
 
