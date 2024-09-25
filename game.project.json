@@ -5,26 +5,25 @@
 
 		"ReplicatedStorage": {
 			"$className": "ReplicatedStorage",
+			"$ignoreUnknownInstances": true,
+			"Order": {
+				"$path": "src/framework"
+			},
 			"Shared": {
-				"$path": "src/shared",
-				"$ignoreUnknownInstances": true,
-				"Order": {
-					"$path": "src/_order"
-				}
+				"$path": "src/game/shared"
 			}
 		},
 
 		"ReplicatedFirst": {
 			"$className": "ReplicatedFirst",
-			"$path": "src/first",
+			"$path": "src/game/first",
 			"$ignoreUnknownInstances": true
 		},
 
 		"ServerScriptService": {
 			"$className": "ServerScriptService",
 			"Server": {
-				"$path": "src/server",
-				"$ignoreUnknownInstances": true
+				"$path": "src/game/server"
 			}
 		},
 
@@ -33,14 +32,14 @@
 			"$ignoreUnknownInstances": true,
 			"StarterPlayerScripts": {
 				"$className": "StarterPlayerScripts",
+				"$ignoreUnknownInstances": true,
 				"Client": {
-					"$path": "src/client",
-					"$ignoreUnknownInstances": true
+					"$path": "src/game/client"
 				}
 			},
 			"StarterCharacterScripts": {
 				"$className": "StarterCharacterScripts",
-				"$path": "src/character",
+				"$path": "src/game/character",
 				"$ignoreUnknownInstances": true
 			}
 		}
