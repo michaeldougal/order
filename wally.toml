@@ -1,0 +1,10 @@
+[package]
+name = "nxtlvl/order"
+description = "Lightweight, customizable framework for Roblox games"
+version = "2.2.0"
+license = "MIT"
+authors = ["Michael Dougal <chiefwildin@gmail.com>"]
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+
+[dependencies]
